@@ -76,26 +76,25 @@ class Layer:
     def gold_prefix(self) -> str:
         return f"{self.settings.environment}/{self.path}"
 
-    def bronze_prefixes(self) -> list[str]:
-        """Prefixos pesquisados na bronze: o ano corrente e, no primeiro
-        trimestre, também o anterior."""
+    def file_prefixes(self) -> list[str]:
+        """Prefixos pesquisados na bronze e na silver: o ano corrente e, no
+        primeiro trimestre, também o anterior."""
         prefix = f"{self.year_prefix()}/{self.file}"
         if not self._is_within_first_quarter():
             return [prefix]
         return [f"{self.year_prefix(self.settings.year - 1)}/{self.file}", prefix]
 
-    def get_bronze_files(self) -> DataFrame:
+    def _get_files_in(self, prefixes: list[str], bucket: str) -> DataFrame:
         return pd.concat(
-            [
-                self._get_files(prefix, self.settings.bucket_bronze)
-                for prefix in self.bronze_prefixes()
-            ],
+            [self._get_files(prefix, bucket) for prefix in prefixes],
             ignore_index=True,
         )
 
+    def get_bronze_files(self) -> DataFrame:
+        return self._get_files_in(self.file_prefixes(), self.settings.bucket_bronze)
+
     def get_silver_files(self) -> DataFrame:
-        prefix = f"{self.year_prefix()}/{self.file}"
-        return self._get_files_with_previous_year(prefix, self.settings.bucket_silver)
+        return self._get_files_in(self.file_prefixes(), self.settings.bucket_silver)
 
     def get_gold_files(self) -> DataFrame:
         prefix = f"{self.gold_prefix()}/{self.file}"

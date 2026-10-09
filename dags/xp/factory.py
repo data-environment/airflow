@@ -42,7 +42,23 @@ def create_dag(contract: dict) -> DAG:
 
             return MedallionPipeline.from_contract(contract).list_bronze_files()
 
-        list_bronze_files()
+        @task
+        def list_silver_files() -> list[dict]:
+            from include.etl.pipeline import MedallionPipeline
+
+            return MedallionPipeline.from_contract(contract).list_silver_files()
+
+        @task
+        def compare_bronze_and_silver(
+            bronze: list[dict], silver: list[dict]
+        ) -> list[dict]:
+            from include.etl.pipeline import MedallionPipeline
+
+            return MedallionPipeline.from_contract(contract).compare_bronze_and_silver(
+                bronze, silver
+            )
+
+        compare_bronze_and_silver(list_bronze_files(), list_silver_files())
 
     return dag
 
