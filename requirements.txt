@@ -1,0 +1,26 @@
+# Providers
+apache-airflow-providers-amazon          # S3, SecretsManagerBackend
+
+# Dados
+pandas
+numpy
+pyarrow
+openpyxl                                 # leitura de .xlsx
+xlrd                                     # leitura de .xls
+lxml                                     # leitura de .html (pd.read_html)
+python-dateutil
+pytz
+pydantic
+pyyaml
+
+# Redshift (dialeto redshift+psycopg2, usado no COPY + staging)
+SQLAlchemy
+sqlalchemy-redshift==1.0.0
+psycopg2-binary
+
+# Notificações (Slack webhook, Microsoft Graph)
+requests
+msal
+
+# Testes
+pytest

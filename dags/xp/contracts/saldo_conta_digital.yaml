@@ -1,0 +1,10 @@
+pipeline: saldo_conta_digital
+description: 'XP saldo conta digital: bronze → silver → gold → Redshift.'
+owner: dw
+tags:
+- saldo_conta_digital
+schedule: 52 22 * * 1-5
+retries: 1
+s3:
+  path: investsmart/xp_inc/saldo_conta_digital
+  file: saldo_conta_digital
