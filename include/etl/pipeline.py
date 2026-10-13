@@ -7,7 +7,7 @@ from pandas import DataFrame
 from include.aws.redshift.client import RedshiftClient
 from include.aws.redshift.connection import RedshiftConnection
 from include.config import TIMEZONE
-from include.etl.contract import apply_contract, select_version
+from include.etl.contract import apply_contract, file_date, select_version
 from include.etl.file_types import Parquet, build_file_type
 from include.etl.layer import Layer, LayerUtils, files_to_records, records_to_files
 from include.etl.silver_to_gold import arrow_schema, to_gold
@@ -266,3 +266,49 @@ class MedallionPipeline:
                 [f"{row.FileName}  {row.tipo}" for row in pending.itertuples()],
             )
         return pending[["Key", "FileName", "tipo"]].to_dict("records")
+
+    def execute_gold_to_redshift(self, record: dict) -> dict:
+        """Carrega um arquivo da gold no Redshift (`load_mode: replace_partition`).
+
+        Parquet → staging (tipos do schema físico do arquivo) → COPY →
+        DELETE do dt_ref + INSERT na tabela final, numa única transação.
+        A staging é por arquivo e é sempre apagada no final.
+        """
+        load_mode = self.redshift.get("load_mode")
+        if load_mode != "replace_partition":
+            raise ValueError(f"load_mode '{load_mode}' não suportado (use replace_partition).")
+
+        settings = self.layer.settings
+        schema, table = self.redshift["schema"], self.redshift["table"]
+        file_name, gold_key = record["FileName"], record["Key"]
+        dt_ref = file_date(file_name)
+        staging_table = f"stg_{table}_{dt_ref:%Y%m%d}"
+
+        client = RedshiftClient(RedshiftConnection(database=self.redshift["database"]))
+        business_columns = client.get_business_columns(schema, table)
+        staging_columns = client.build_staging_columns(
+            self.layer.s3_client.get_parquet_schema(settings.bucket_gold, gold_key),
+            client.get_varchar_length_hints(schema, table),
+        )
+        client.validate_columns_match(business_columns, staging_columns)
+
+        try:
+            client.create_staging_table(schema, staging_table, staging_columns)
+            rows = client.copy_into_staging(
+                schema,
+                staging_table,
+                f"s3://{settings.bucket_gold}/{gold_key}",
+                staging_columns,
+            )
+            deleted = client.replace_partition_from_staging(
+                schema, table, staging_table, business_columns, f"dt_ref = '{dt_ref}'"
+            )
+        finally:
+            client.drop_table(schema, staging_table)
+
+        logger.info(
+            f"{file_name} ({record.get('tipo')}): {rows} linha(s) carregada(s) em "
+            f"{self.redshift['database']}.{schema}.{table} para dt_ref {dt_ref} "
+            f"({deleted} linha(s) anteriores substituída(s))."
+        )
+        return {"FileName": file_name, "dt_ref": str(dt_ref), "rows": rows, "deleted": deleted}

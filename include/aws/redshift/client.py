@@ -267,6 +267,36 @@ class RedshiftClient:
                 f"Failed to insert {schema}.{staging_table} into {schema}.{table}: {exc}"
             ) from exc
 
+    def replace_partition_from_staging(
+        self,
+        schema: str,
+        table: str,
+        staging_table: str,
+        business_columns: list,
+        where: str,
+    ) -> int:
+        """DELETE da partição + INSERT a partir da staging numa única transação:
+        se o INSERT falhar, o DELETE é desfeito e a tabela fica como estava.
+        Retorna o número de linhas apagadas."""
+        column_list = ", ".join(business_columns)
+        try:
+            with self.connection.engine.begin() as conn:
+                deleted = conn.execute(
+                    text(f"DELETE FROM {schema}.{table} WHERE {where}")
+                ).rowcount
+                conn.execute(
+                    text(
+                        f"INSERT INTO {schema}.{table} ({column_list}) "
+                        f"SELECT {column_list} FROM {schema}.{staging_table}"
+                    )
+                )
+            return deleted
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to replace {schema}.{table} where {where} "
+                f"from {schema}.{staging_table}: {exc}"
+            ) from exc
+
     def drop_table(self, schema: str, staging_table: str) -> None:
         try:
             with self.connection.engine.begin() as conn:

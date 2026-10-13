@@ -59,7 +59,7 @@ def create_dag(contract: dict) -> DAG:
             )
 
         @task(map_index_template="{{ file_name }}")
-        def transform_bronze_to_silver(record: dict) -> dict:
+        def etl_bronze_to_silver(record: dict) -> dict:
             from include.etl.pipeline import MedallionPipeline
 
             get_current_context()["file_name"] = record["FileName"]
@@ -82,7 +82,7 @@ def create_dag(contract: dict) -> DAG:
             )
 
         @task(map_index_template="{{ file_name }}")
-        def transform_silver_to_gold(record: dict) -> dict:
+        def etl_silver_to_gold(record: dict) -> dict:
             from include.etl.pipeline import MedallionPipeline
 
             get_current_context()["file_name"] = record["FileName"]
@@ -106,21 +106,31 @@ def create_dag(contract: dict) -> DAG:
                 gold, redshift
             )
 
+        @task(map_index_template="{{ file_name }}", max_active_tis_per_dagrun=1)
+        def etl_gold_to_redshift(record: dict) -> dict:
+            from include.etl.pipeline import MedallionPipeline
+
+            get_current_context()["file_name"] = record["FileName"]
+            return MedallionPipeline.from_contract(contract).execute_gold_to_redshift(
+                record
+            )
+
         bronze_files = list_bronze_files()
         silver_files = list_silver_files()
         pending = compare_bronze_and_silver(bronze_files, silver_files)
-        transformed = transform_bronze_to_silver.expand(record=pending)
+        transformed = etl_bronze_to_silver.expand(record=pending)
 
         silver_files = list_silver_files.override(task_id="list_silver_files_sg")()
         gold_files = list_gold_files()
         transformed >> [silver_files, gold_files]
         pending_gold = compare_silver_and_gold(silver_files, gold_files)
-        transformed_gold = transform_silver_to_gold.expand(record=pending_gold)
+        transformed_gold = etl_silver_to_gold.expand(record=pending_gold)
 
         gold_files = list_gold_files.override(task_id="list_gold_files_gr")()
         redshift_files = list_redshift_files()
         transformed_gold >> [gold_files, redshift_files]
-        compare_gold_and_redshift(gold_files, redshift_files)
+        to_load = compare_gold_and_redshift(gold_files, redshift_files)
+        etl_gold_to_redshift.expand(record=to_load)
 
     return dag
 
