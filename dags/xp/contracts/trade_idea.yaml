@@ -9,10 +9,10 @@ s3:
   path: investsmart/xp_inc/trade_idea
   file: trade_idea
 bronze_to_silver:
-  destination: {type: csv, sep: ;, encoding: UTF-8}
   versions:
   - from: 2020-01-01
     origin: {type: xlsx}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
     footer_column: Cliente
     columns:
     - {name: cod_xp_cliente, source: Cliente, min_length: 3, max_length: 8, pattern: '^[0-9]+$'}
@@ -30,7 +30,6 @@ bronze_to_silver:
     - {name: obs, source: Obs, required: false, min_length: 0, max_length: 512}
     - {name: id_usuario_envio, source: Usuario Envio, required: false, min_length: 2, max_length: 64}
 silver_to_gold:
-  origin: {type: csv, sep: ;, encoding: UTF-8}
   schema:
   - {name: cod_xp_cliente, type: string}
   - {name: cod_xp_assessor, type: string, only_digits: true}

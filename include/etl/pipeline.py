@@ -159,7 +159,7 @@ class MedallionPipeline:
         bronze = reader.get(settings.bucket_bronze, bronze_key)
         silver = apply_contract(bronze, version, version.get("footer_column"))
 
-        writer = build_file_type(self.bronze_to_silver["destination"], s3, None)
+        writer = build_file_type(version["destination"], s3, None)
         prefix = bronze_key.rsplit("/", 1)[0]
         writer.put(silver, settings.bucket_silver, prefix, file_name)
         silver_key = f"{prefix}/{file_name}.{writer.extension}"
@@ -182,16 +182,25 @@ class MedallionPipeline:
 
     def transform_silver_to_gold(self, record: dict) -> dict:
         """Lê um arquivo da silver, aplica o schema da gold e grava em Parquet
-        (`<env>/<path>/<arquivo>.parquet`, sem partição por ano)."""
+        (`<env>/<path>/<arquivo>.parquet`, sem partição por ano).
+
+        O formato da silver é o `destination` da versão do contrato
+        bronze → silver que gerou o arquivo (escolhida pela data do nome)."""
         if not self.silver_to_gold:
             raise ValueError("O YAML do pipeline não tem o bloco `silver_to_gold`.")
+        if not self.bronze_to_silver:
+            raise ValueError(
+                "O YAML do pipeline não tem o bloco `bronze_to_silver`, "
+                "de onde vem o formato da silver."
+            )
 
         settings = self.layer.settings
         s3 = self.layer.s3_client
         file_name, silver_key = record["FileName"], record["Key"]
         columns = self.silver_to_gold["schema"]
 
-        reader = build_file_type(self.silver_to_gold["origin"], s3, None)
+        version = select_version(self.bronze_to_silver["versions"], file_name)
+        reader = build_file_type(version["destination"], s3, None)
         silver = reader.get(settings.bucket_silver, silver_key)
         gold = to_gold(silver, columns, file_name)
 
