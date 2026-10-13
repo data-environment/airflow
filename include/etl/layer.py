@@ -96,9 +96,12 @@ class Layer:
     def get_silver_files(self) -> DataFrame:
         return self._get_files_in(self.file_prefixes(), self.settings.bucket_silver)
 
+    def gold_file_prefixes(self) -> list[str]:
+        """Prefixos pesquisados na gold (sem particionamento por ano)."""
+        return [f"{self.gold_prefix()}/{self.file}"]
+
     def get_gold_files(self) -> DataFrame:
-        prefix = f"{self.gold_prefix()}/{self.file}"
-        return self._get_files(prefix, self.settings.bucket_gold)
+        return self._get_files_in(self.gold_file_prefixes(), self.settings.bucket_gold)
 
     def get_cnpj_files(self) -> DataFrame:
         frames = []

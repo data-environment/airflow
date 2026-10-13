@@ -8,3 +8,18 @@ retries: 1
 s3:
   path: investsmart/xp_inc/saldo_conta_digital
   file: saldo_conta_digital
+bronze_to_silver:
+  destination: {type: csv, sep: ;, encoding: UTF-8}
+  versions:
+  - from: 2020-01-01
+    origin: {type: xlsx}
+    footer_column: Codigo da Conta
+    columns:
+    - {name: cod_conta, source: Codigo da Conta}
+    - {name: cod_xp_assessor, source: Código AAI}
+    - {name: modalidade, source: Modalidade, required: false}
+    - {name: segmento, source: Segmento, required: false}
+    - {name: saldo_concorrente, source: Saldo Concorrente, required: false}
+    - {name: prazo_saldo_mercado, source: Prazo Saldo Mercado, required: false}
+    - {name: saldo_xp, source: Saldo XP}
+    - {name: prazo_saldo_xp, source: Prazo Saldo XP, required: false}

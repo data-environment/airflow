@@ -72,9 +72,11 @@ class XLSX:
     header: int = 0
     extension = "xlsx"
 
-    def get(self, bucket: str, key: str, **kwargs) -> DataFrame:
+    def get(self, bucket: str, key: str, dtype=str, **kwargs) -> DataFrame:
         buffer = io.BytesIO(self.s3.get_bytes(bucket, key))
-        return pd.read_excel(buffer, engine="openpyxl", header=self.header, **kwargs)
+        return pd.read_excel(
+            buffer, engine="openpyxl", header=self.header, dtype=dtype, **kwargs
+        )
 
     def put(self, dataframe: DataFrame, bucket: str, prefix: str, file_name: str):
         with io.BytesIO() as buffer:
@@ -99,9 +101,9 @@ class XLS:
     s3: S3Client
     extension = "xls"
 
-    def get(self, bucket: str, key: str, **kwargs) -> DataFrame:
+    def get(self, bucket: str, key: str, dtype=str, **kwargs) -> DataFrame:
         buffer = io.BytesIO(self.s3.get_bytes(bucket, key))
-        return pd.read_excel(buffer, engine="xlrd", **kwargs)
+        return pd.read_excel(buffer, engine="xlrd", dtype=dtype, **kwargs)
 
 
 FILE_TYPES = {"parquet": Parquet, "csv": CSV, "xlsx": XLSX, "html": HTML, "xls": XLS}

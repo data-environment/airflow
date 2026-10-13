@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pendulum
 import yaml
-from airflow.sdk import DAG, task
+from airflow.sdk import DAG, get_current_context, task
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,31 @@ def create_dag(contract: dict) -> DAG:
                 bronze, silver
             )
 
-        compare_bronze_and_silver(list_bronze_files(), list_silver_files())
+        @task(map_index_template="{{ file_name }}")
+        def transform_bronze_to_silver(record: dict) -> dict:
+            from include.etl.pipeline import MedallionPipeline
+
+            get_current_context()["file_name"] = record["FileName"]
+            return MedallionPipeline.from_contract(contract).transform_bronze_to_silver(
+                record
+            )
+
+        @task(trigger_rule="none_failed")
+        def list_gold_files() -> list[dict]:
+            from include.etl.pipeline import MedallionPipeline
+
+            return MedallionPipeline.from_contract(contract).list_gold_files()
+
+        bronze_files = list_bronze_files()
+        silver_files = list_silver_files()
+        pending = compare_bronze_and_silver(bronze_files, silver_files)
+        transformed = transform_bronze_to_silver.expand(record=pending)
+
+        silver_files = list_silver_files.override(
+            task_id="list_silver_files_sg", trigger_rule="none_failed"
+        )()
+        gold_files = list_gold_files()
+        transformed >> [silver_files, gold_files]
 
     return dag
 

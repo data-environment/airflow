@@ -8,3 +8,24 @@ retries: 1
 s3:
   path: investsmart/xp_inc/trade_idea
   file: trade_idea
+bronze_to_silver:
+  destination: {type: csv, sep: ;, encoding: UTF-8}
+  versions:
+  - from: 2020-01-01
+    origin: {type: xlsx}
+    footer_column: Cliente
+    columns:
+    - {name: cod_xp_cliente, source: Cliente, min_length: 3, max_length: 8, pattern: '^[0-9]+$'}
+    - {name: cod_xp_assessor, source: Assessor, required: false, min_length: 4, max_length: 6, pattern: '^A[0-9]+$'}
+    - {name: id_trade_idea, source: Id, min_length: 1, max_length: 64}
+    - {name: trade_idea, source: Trade idea, required: false, min_length: 2, max_length: 64}
+    - {name: nome_analista, source: Analista, required: false, min_length: 2, max_length: 64}
+    - {name: casa_analise, source: Casa de Análise, required: false, min_length: 2, max_length: 128}
+    - {name: vlr_aportado, source: Valor aportado (R$), type: decimal, required: false}
+    - {name: vlr_posicao, source: Posição (R$), type: decimal, required: false}
+    - {name: prc_rentabilidade, source: Rentabilidade (%), type: decimal, required: false}
+    - {name: dt_entrada, source: Data de entrada, required: false}
+    - {name: dt_limite_encerramento, source: Limite de encerramento, required: false}
+    - {name: status, source: Status, required: false, min_length: 2, max_length: 32}
+    - {name: obs, source: Obs, required: false, min_length: 0, max_length: 512}
+    - {name: id_usuario_envio, source: Usuario Envio, required: false, min_length: 2, max_length: 64}
