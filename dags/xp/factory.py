@@ -3,7 +3,20 @@ from pathlib import Path
 
 import pendulum
 import yaml
-from airflow.sdk import DAG, get_current_context, task
+from airflow.sdk import DAG, TaskGroup
+
+from include.etl.tasks import (
+    compare_bronze_and_silver,
+    compare_gold_and_redshift,
+    compare_silver_and_gold,
+    etl_bronze_to_silver,
+    etl_gold_to_redshift,
+    etl_silver_to_gold,
+    list_bronze_files,
+    list_gold_files,
+    list_redshift_files,
+    list_silver_files,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,102 +48,27 @@ def create_dag(contract: dict) -> DAG:
             "retries": contract.get("retries", 0),
         },
     ) as dag:
-
-        @task
-        def list_bronze_files() -> list[dict]:
-            from include.etl.pipeline import MedallionPipeline
-
-            return MedallionPipeline.from_contract(contract).list_bronze_files()
-
-        @task
-        def list_silver_files() -> list[dict]:
-            from include.etl.pipeline import MedallionPipeline
-
-            return MedallionPipeline.from_contract(contract).list_silver_files()
-
-        @task
-        def compare_bronze_and_silver(
-            bronze: list[dict], silver: list[dict]
-        ) -> list[dict]:
-            from include.etl.pipeline import MedallionPipeline
-
-            return MedallionPipeline.from_contract(contract).compare_bronze_and_silver(
-                bronze, silver
+        with TaskGroup("bronze_to_silver"):
+            pending = compare_bronze_and_silver(
+                list_bronze_files(contract), list_silver_files(contract)
+            )
+            transformed = etl_bronze_to_silver.partial(contract=contract).expand(
+                record=pending
             )
 
-        @task(map_index_template="{{ file_name }}")
-        def etl_bronze_to_silver(record: dict) -> dict:
-            from include.etl.pipeline import MedallionPipeline
-
-            get_current_context()["file_name"] = record["FileName"]
-            return MedallionPipeline.from_contract(contract).transform_bronze_to_silver(
-                record
+        with TaskGroup("silver_to_gold"):
+            silver, gold = list_silver_files(contract), list_gold_files(contract)
+            transformed >> [silver, gold]
+            pending = compare_silver_and_gold(silver, gold)
+            transformed = etl_silver_to_gold.partial(contract=contract).expand(
+                record=pending
             )
 
-        @task(trigger_rule="none_failed")
-        def list_gold_files() -> list[dict]:
-            from include.etl.pipeline import MedallionPipeline
-
-            return MedallionPipeline.from_contract(contract).list_gold_files()
-
-        @task
-        def compare_silver_and_gold(silver: list[dict], gold: list[dict]) -> list[dict]:
-            from include.etl.pipeline import MedallionPipeline
-
-            return MedallionPipeline.from_contract(contract).compare_silver_and_gold(
-                silver, gold
-            )
-
-        @task(map_index_template="{{ file_name }}")
-        def etl_silver_to_gold(record: dict) -> dict:
-            from include.etl.pipeline import MedallionPipeline
-
-            get_current_context()["file_name"] = record["FileName"]
-            return MedallionPipeline.from_contract(contract).transform_silver_to_gold(
-                record
-            )
-
-        @task(trigger_rule="none_failed")
-        def list_redshift_files() -> list[dict]:
-            from include.etl.pipeline import MedallionPipeline
-
-            return MedallionPipeline.from_contract(contract).list_redshift_files()
-
-        @task
-        def compare_gold_and_redshift(
-            gold: list[dict], redshift: list[dict]
-        ) -> list[dict]:
-            from include.etl.pipeline import MedallionPipeline
-
-            return MedallionPipeline.from_contract(contract).compare_gold_and_redshift(
-                gold, redshift
-            )
-
-        @task(map_index_template="{{ file_name }}", max_active_tis_per_dagrun=1)
-        def etl_gold_to_redshift(record: dict) -> dict:
-            from include.etl.pipeline import MedallionPipeline
-
-            get_current_context()["file_name"] = record["FileName"]
-            return MedallionPipeline.from_contract(contract).execute_gold_to_redshift(
-                record
-            )
-
-        bronze_files = list_bronze_files()
-        silver_files = list_silver_files()
-        pending = compare_bronze_and_silver(bronze_files, silver_files)
-        transformed = etl_bronze_to_silver.expand(record=pending)
-
-        silver_files = list_silver_files.override(task_id="list_silver_files_sg")()
-        gold_files = list_gold_files()
-        transformed >> [silver_files, gold_files]
-        pending_gold = compare_silver_and_gold(silver_files, gold_files)
-        transformed_gold = etl_silver_to_gold.expand(record=pending_gold)
-
-        gold_files = list_gold_files.override(task_id="list_gold_files_gr")()
-        redshift_files = list_redshift_files()
-        transformed_gold >> [gold_files, redshift_files]
-        to_load = compare_gold_and_redshift(gold_files, redshift_files)
-        etl_gold_to_redshift.expand(record=to_load)
+        with TaskGroup("gold_to_redshift"):
+            gold, redshift = list_gold_files(contract), list_redshift_files(contract)
+            transformed >> [gold, redshift]
+            pending = compare_gold_and_redshift(gold, redshift)
+            etl_gold_to_redshift.partial(contract=contract).expand(record=pending)
 
     return dag
 
