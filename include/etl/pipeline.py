@@ -1,8 +1,12 @@
 import logging
 from dataclasses import dataclass, field
 
+import pandas as pd
 from pandas import DataFrame
 
+from include.aws.redshift.client import RedshiftClient
+from include.aws.redshift.connection import RedshiftConnection
+from include.config import TIMEZONE
 from include.etl.contract import apply_contract, select_version
 from include.etl.file_types import Parquet, build_file_type
 from include.etl.layer import Layer, LayerUtils, files_to_records, records_to_files
@@ -85,6 +89,7 @@ class MedallionPipeline:
     file: str
     bronze_to_silver: dict | None = None
     silver_to_gold: dict | None = None
+    redshift: dict | None = None
     layer: Layer = field(init=False)
 
     def __post_init__(self) -> None:
@@ -97,6 +102,7 @@ class MedallionPipeline:
             file=contract["s3"]["file"],
             bronze_to_silver=contract.get("bronze_to_silver"),
             silver_to_gold=contract.get("silver_to_gold"),
+            redshift=contract.get("redshift"),
         )
 
     def list_bronze_files(self) -> list[dict]:
@@ -201,3 +207,62 @@ class MedallionPipeline:
             f"(dt_ref {gold['dt_ref'].iloc[0] if len(gold) else '-'})"
         )
         return {"FileName": file_name, "Key": gold_key, "rows": len(gold)}
+
+    def list_redshift_files(self) -> list[dict]:
+        """`dt_ref` já carregados na tabela de destino e quando foram carregados
+        pela última vez (`MAX(dt_relatorio)`). Cada `dt_ref` corresponde a um
+        arquivo da gold."""
+        table = f"{self.redshift['schema']}.{self.redshift['table']}"
+        client = RedshiftClient(RedshiftConnection(database=self.redshift["database"]))
+        loaded = client.get(
+            f"SELECT dt_ref, MAX(dt_relatorio) AS dt_relatorio FROM {table} GROUP BY dt_ref"
+        )
+
+        if loaded.empty:
+            logger.warning(f"Redshift: {table} sem nenhum dt_ref carregado.")
+        else:
+            logger.info(
+                f"Redshift: {len(loaded)} dt_ref carregado(s) em "
+                f"{self.redshift['database']}.{table} "
+                f"(de {loaded['dt_ref'].min()} a {loaded['dt_ref'].max()})."
+            )
+        return [
+            {
+                "dt_ref": str(row.dt_ref),
+                "dt_relatorio": pd.Timestamp(row.dt_relatorio).isoformat(),
+            }
+            for row in loaded.itertuples()
+        ]
+
+    def compare_gold_and_redshift(
+        self, gold: list[dict], redshift: list[dict]
+    ) -> list[dict]:
+        """Arquivos da gold a carregar: `insert` (dt_ref ainda não está na
+        tabela) ou `update` (arquivo modificado depois da última carga)."""
+        loaded = pd.DataFrame(redshift, columns=["dt_ref", "dt_relatorio"])
+        loaded["dt_relatorio"] = pd.to_datetime(loaded["dt_relatorio"])
+        # O LayerUtils compara com o LastModified da gold em horário de Brasília
+        # sem fuso; se a coluna vier como timestamptz, normaliza igual.
+        if loaded["dt_relatorio"].dt.tz is not None:
+            loaded["dt_relatorio"] = (
+                loaded["dt_relatorio"].dt.tz_convert(TIMEZONE).dt.tz_localize(None)
+            )
+
+        pending = LayerUtils().compare_with_redshift(records_to_files(gold), loaded)
+        pending = pending.assign(
+            FileName=pending["Key"].str.split("/").str[-1].str.split(".").str[0]
+        )
+
+        if pending.empty:
+            logger.info("Gold x redshift: nenhum arquivo novo ou modificado.")
+        else:
+            counts = pending["tipo"].value_counts()
+            logger.info(
+                f"Gold x redshift: {len(pending)} arquivo(s) para carregar "
+                f"({counts.get('insert', 0)} insert, {counts.get('update', 0)} update)."
+            )
+            log_group(
+                f"Arquivos para carregar ({len(pending)})",
+                [f"{row.FileName}  {row.tipo}" for row in pending.itertuples()],
+            )
+        return pending[["Key", "FileName", "tipo"]].to_dict("records")

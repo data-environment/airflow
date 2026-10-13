@@ -90,18 +90,37 @@ def create_dag(contract: dict) -> DAG:
                 record
             )
 
+        @task(trigger_rule="none_failed")
+        def list_redshift_files() -> list[dict]:
+            from include.etl.pipeline import MedallionPipeline
+
+            return MedallionPipeline.from_contract(contract).list_redshift_files()
+
+        @task
+        def compare_gold_and_redshift(
+            gold: list[dict], redshift: list[dict]
+        ) -> list[dict]:
+            from include.etl.pipeline import MedallionPipeline
+
+            return MedallionPipeline.from_contract(contract).compare_gold_and_redshift(
+                gold, redshift
+            )
+
         bronze_files = list_bronze_files()
         silver_files = list_silver_files()
         pending = compare_bronze_and_silver(bronze_files, silver_files)
         transformed = transform_bronze_to_silver.expand(record=pending)
 
-        silver_files = list_silver_files.override(
-            task_id="list_silver_files_sg", trigger_rule="none_failed"
-        )()
+        silver_files = list_silver_files.override(task_id="list_silver_files_sg")()
         gold_files = list_gold_files()
         transformed >> [silver_files, gold_files]
         pending_gold = compare_silver_and_gold(silver_files, gold_files)
-        transform_silver_to_gold.expand(record=pending_gold)
+        transformed_gold = transform_silver_to_gold.expand(record=pending_gold)
+
+        gold_files = list_gold_files.override(task_id="list_gold_files_gr")()
+        redshift_files = list_redshift_files()
+        transformed_gold >> [gold_files, redshift_files]
+        compare_gold_and_redshift(gold_files, redshift_files)
 
     return dag
 

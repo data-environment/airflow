@@ -36,3 +36,8 @@ silver_to_gold:
   - {name: prazo_saldo_xp, type: string}
   - {name: dt_ref, type: date64}
   - {name: id_calendario_dt_ref, type: int32}
+redshift:
+  database: dw
+  schema: xp_inc
+  table: saldo_conta_digital
+  load_mode: replace_partition
