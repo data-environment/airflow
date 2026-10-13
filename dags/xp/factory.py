@@ -73,6 +73,23 @@ def create_dag(contract: dict) -> DAG:
 
             return MedallionPipeline.from_contract(contract).list_gold_files()
 
+        @task
+        def compare_silver_and_gold(silver: list[dict], gold: list[dict]) -> list[dict]:
+            from include.etl.pipeline import MedallionPipeline
+
+            return MedallionPipeline.from_contract(contract).compare_silver_and_gold(
+                silver, gold
+            )
+
+        @task(map_index_template="{{ file_name }}")
+        def transform_silver_to_gold(record: dict) -> dict:
+            from include.etl.pipeline import MedallionPipeline
+
+            get_current_context()["file_name"] = record["FileName"]
+            return MedallionPipeline.from_contract(contract).transform_silver_to_gold(
+                record
+            )
+
         bronze_files = list_bronze_files()
         silver_files = list_silver_files()
         pending = compare_bronze_and_silver(bronze_files, silver_files)
@@ -83,6 +100,8 @@ def create_dag(contract: dict) -> DAG:
         )()
         gold_files = list_gold_files()
         transformed >> [silver_files, gold_files]
+        pending_gold = compare_silver_and_gold(silver_files, gold_files)
+        transform_silver_to_gold.expand(record=pending_gold)
 
     return dag
 

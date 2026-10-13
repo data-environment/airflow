@@ -29,3 +29,22 @@ bronze_to_silver:
     - {name: status, source: Status, required: false, min_length: 2, max_length: 32}
     - {name: obs, source: Obs, required: false, min_length: 0, max_length: 512}
     - {name: id_usuario_envio, source: Usuario Envio, required: false, min_length: 2, max_length: 64}
+silver_to_gold:
+  origin: {type: csv, sep: ;, encoding: UTF-8}
+  schema:
+  - {name: cod_xp_cliente, type: string}
+  - {name: cod_xp_assessor, type: string, only_digits: true}
+  - {name: id_trade_idea, type: string}
+  - {name: trade_idea, type: string}
+  - {name: nome_analista, type: string}
+  - {name: casa_analise, type: string}
+  - {name: vlr_aportado, type: float64}
+  - {name: vlr_posicao, type: float64}
+  - {name: prc_rentabilidade, type: float64}
+  - {name: dt_entrada, type: 'timestamp[ns]'}
+  - {name: dt_limite_encerramento, type: 'timestamp[ns]'}
+  - {name: status, type: string}
+  - {name: obs, type: string}
+  - {name: id_usuario_envio, type: string}
+  - {name: dt_ref, type: date64}
+  - {name: id_calendario_dt_ref, type: int32}

@@ -23,3 +23,16 @@ bronze_to_silver:
     - {name: prazo_saldo_mercado, source: Prazo Saldo Mercado, required: false}
     - {name: saldo_xp, source: Saldo XP}
     - {name: prazo_saldo_xp, source: Prazo Saldo XP, required: false}
+silver_to_gold:
+  origin: {type: csv, sep: ;, encoding: UTF-8}
+  schema:
+  - {name: cod_conta, type: string}
+  - {name: cod_xp_assessor, type: string, only_digits: true}
+  - {name: modalidade, type: string}
+  - {name: segmento, type: string}
+  - {name: saldo_concorrente, type: string}
+  - {name: prazo_saldo_mercado, type: string}
+  - {name: saldo_xp, type: string}
+  - {name: prazo_saldo_xp, type: string}
+  - {name: dt_ref, type: date64}
+  - {name: id_calendario_dt_ref, type: int32}
