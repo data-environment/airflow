@@ -1,8 +1,14 @@
 import logging
+from typing import TYPE_CHECKING
 
 from airflow.sdk import get_current_context, task
 
+if TYPE_CHECKING:
+    from pandas import DataFrame
+
 logger = logging.getLogger(__name__)
+
+MAX_LOGGED_FILES = 20
 
 
 def _layer(contract: dict):
@@ -17,10 +23,77 @@ def _require(contract: dict, block: str) -> dict:
     return contract[block]
 
 
+def log_group(title: str, lines: list[str]) -> None:
+    """Loga `lines` entre `::group::`/`::endgroup::`, que a UI do Airflow
+    mostra como uma seção recolhível. Limita a `MAX_LOGGED_FILES` linhas."""
+    logger.info(f"::group::{title}")
+    for line in lines[:MAX_LOGGED_FILES]:
+        logger.info(line)
+    if len(lines) > MAX_LOGGED_FILES:
+        logger.info(f"... e mais {len(lines) - MAX_LOGGED_FILES}")
+    logger.info("::endgroup::")
+
+
+def log_files(
+    layer_name: str, bucket: str, prefixes: list[str], files: "DataFrame"
+) -> None:
+    """Loga onde a camada foi pesquisada e os arquivos encontrados."""
+    label = layer_name.capitalize()
+    for prefix in prefixes:
+        logger.info(f"{label}: procurando em {bucket}/{prefix}")
+
+    if files.empty:
+        logger.warning(f"{label}: nenhum arquivo encontrado.")
+        return
+
+    logger.info(f"{label}: {len(files)} arquivo(s) encontrado(s).")
+    log_group(
+        f"Arquivos na {layer_name} ({len(files)})",
+        [
+            f"{row.FileName}  modificado em {row.LastModified:%Y-%m-%d %H:%M} UTC  "
+            f"{row.Size / 1024:,.0f} KB"
+            for row in files.itertuples()
+        ],
+    )
+
+
+def _compare_layers(
+    source_name: str, source: list[dict], target_name: str, target: list[dict]
+) -> list[dict]:
+    """Arquivos de `source` novos ou modificados em relação a `target`,
+    no formato do XCom, com o `LastModified` do `source`."""
+    from include.etl.layer import LayerUtils, files_to_records, records_to_files
+
+    pending = LayerUtils().compare(records_to_files(source), records_to_files(target))
+    is_new = pending["LastModified_y"].isna()
+    label = f"{source_name.capitalize()} x {target_name}"
+
+    if pending.empty:
+        logger.info(f"{label}: nenhum arquivo novo ou modificado.")
+    else:
+        logger.info(
+            f"{label}: {len(pending)} arquivo(s) para processar "
+            f"({is_new.sum()} novo(s), {(~is_new).sum()} modificado(s))."
+        )
+        log_group(
+            f"Arquivos para processar ({len(pending)})",
+            [
+                f"{row.FileName}  "
+                + (
+                    "novo"
+                    if new
+                    else f"modificado ({target_name} de {row.LastModified_y:%Y-%m-%d %H:%M} UTC)"
+                )
+                for row, new in zip(pending.itertuples(), is_new)
+            ],
+        )
+
+    return files_to_records(pending.rename(columns={"LastModified_x": "LastModified"}))
+
+
 @task
 def list_bronze_files(contract: dict) -> list[dict]:
     from include.etl.layer import files_to_records
-    from include.etl.pipeline import log_files
 
     layer = _layer(contract)
     files = layer.get_bronze_files()
@@ -31,7 +104,6 @@ def list_bronze_files(contract: dict) -> list[dict]:
 @task
 def list_silver_files(contract: dict) -> list[dict]:
     from include.etl.layer import files_to_records
-    from include.etl.pipeline import log_files
 
     layer = _layer(contract)
     files = layer.get_silver_files()
@@ -42,7 +114,6 @@ def list_silver_files(contract: dict) -> list[dict]:
 @task
 def list_gold_files(contract: dict) -> list[dict]:
     from include.etl.layer import files_to_records
-    from include.etl.pipeline import log_files
 
     layer = _layer(contract)
     files = layer.get_gold_files()
@@ -87,18 +158,14 @@ def list_redshift_files(contract: dict) -> list[dict]:
 def compare_bronze_and_silver(bronze: list[dict], silver: list[dict]) -> list[dict]:
     """Arquivos da bronze sem correspondente na silver (novos) ou
     modificados depois da versão que está na silver."""
-    from include.etl.pipeline import compare_layers
-
-    return compare_layers("bronze", bronze, "silver", silver)
+    return _compare_layers("bronze", bronze, "silver", silver)
 
 
 @task
 def compare_silver_and_gold(silver: list[dict], gold: list[dict]) -> list[dict]:
     """Arquivos da silver sem correspondente na gold (novos) ou
     modificados depois da versão que está na gold."""
-    from include.etl.pipeline import compare_layers
-
-    return compare_layers("silver", silver, "gold", gold)
+    return _compare_layers("silver", silver, "gold", gold)
 
 
 @task
@@ -109,7 +176,6 @@ def compare_gold_and_redshift(gold: list[dict], redshift: list[dict]) -> list[di
 
     from include.config import TIMEZONE
     from include.etl.layer import LayerUtils, records_to_files
-    from include.etl.pipeline import log_group
 
     loaded = pd.DataFrame(redshift, columns=["dt_ref", "dt_relatorio"])
     loaded["dt_relatorio"] = pd.to_datetime(loaded["dt_relatorio"])
