@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 
 import pandas as pd
-import pytz
 from pandas import DataFrame
 
 from include.aws.s3.client import S3Client
@@ -115,74 +114,3 @@ class Layer:
             )
         return pd.concat(frames, ignore_index=True)
 
-
-class LayerUtils:
-    def __init__(self):
-        self.brazil_timezone = pytz.timezone("America/Sao_Paulo")
-
-    def compare(
-        self,
-        df_files_first_layer: DataFrame,
-        df_files_second_layer: DataFrame,
-    ) -> DataFrame:
-        """Arquivos da primeira camada novos ou modificados em relação à segunda."""
-        df_merged = pd.merge(
-            df_files_first_layer[["FileName", "Key", "LastModified", "ano"]],
-            df_files_second_layer[["FileName", "LastModified"]],
-            on="FileName",
-            how="left",
-        )
-        is_new = df_merged["LastModified_y"].isna()
-        is_modified = df_merged["LastModified_x"] > df_merged["LastModified_y"]
-
-        return df_merged[is_new | is_modified]
-
-    def __treat_df_gold(self, df_gold: DataFrame) -> DataFrame:
-        df_gold = df_gold.copy()
-        df_gold["LastModified"] = df_gold["LastModified"].dt.tz_convert(
-            self.brazil_timezone
-        )
-        df_gold["LastModified"] = df_gold["LastModified"].dt.tz_localize(None)
-        df_gold["FileName"] = df_gold["FileName"].str[-8:].astype("Int64")
-
-        return df_gold
-
-    def __treat_df_redshift(self, df_redshift: DataFrame) -> DataFrame:
-        df_redshift = df_redshift.copy()
-        df_redshift["dt_ref"] = df_redshift["dt_ref"].astype("string")
-        df_redshift["dt_ref"] = (
-            df_redshift["dt_ref"].str.replace("-", "").astype("Int64")
-        )
-
-        return df_redshift
-
-    def __create_df_etl(self, tb_comparacao: DataFrame) -> DataFrame:
-        df_novos = tb_comparacao[tb_comparacao["dt_ref"].isnull()].copy()
-        df_atualizacao = tb_comparacao[
-            tb_comparacao["LastModified"] > tb_comparacao["dt_relatorio"]
-        ].copy()
-        df_atualizacao["tipo"] = "update"
-        df_novos["tipo"] = "insert"
-
-        return pd.concat([df_novos, df_atualizacao])
-
-    def compare_with_redshift(
-        self,
-        df_layer: DataFrame,
-        df_redshift: DataFrame,
-    ) -> DataFrame:
-        """Keys do gold a carregar: `insert` (dt_ref ausente) ou `update`
-        (arquivo modificado depois do `dt_relatorio` carregado)."""
-        if df_redshift.empty:
-            df_layer = df_layer.copy()
-            df_layer["tipo"] = "insert"
-            return df_layer[["Key", "tipo"]]
-
-        df_layer = self.__treat_df_gold(df_layer)
-        df_redshift = self.__treat_df_redshift(df_redshift)
-        tb_compare = pd.merge(
-            df_layer, df_redshift, left_on="FileName", right_on="dt_ref", how="left"
-        )
-        df_etl = self.__create_df_etl(tb_compare)
-
-        return df_etl[["Key", "tipo"]]
