@@ -205,7 +205,6 @@ def compare_gold_and_redshift(gold: list[dict], redshift: list[dict]) -> list[di
 
 @task(map_index_template="{{ file_name }}")
 def etl_bronze_to_silver(contract: dict, record: dict) -> dict:
-    """Lê um arquivo da bronze, aplica o contrato e grava na silver."""
     from include.etl.bronze_to_silver import BronzeToSilver
 
     get_current_context()["file_name"] = record["FileName"]
@@ -214,39 +213,10 @@ def etl_bronze_to_silver(contract: dict, record: dict) -> dict:
 
 @task(map_index_template="{{ file_name }}")
 def etl_silver_to_gold(contract: dict, record: dict) -> dict:
-    """Lê um arquivo da silver, aplica o schema da gold e grava em Parquet
-    (`<env>/<path>/<arquivo>.parquet`, sem partição por ano).
-
-    O formato da silver é o `destination` da versão do contrato
-    bronze → silver que gerou o arquivo (escolhida pela data do nome)."""
-    from include.etl.file_types import Parquet, build_file_type
-    from include.etl.silver_to_gold import arrow_schema, to_gold
+    from include.etl.silver_to_gold import SilverToGold
 
     get_current_context()["file_name"] = record["FileName"]
-    contract = _contract(contract)
-    columns = contract.silver_to_gold.columns
-
-    layer = contract.layer()
-    settings, s3 = layer.settings, layer.s3_client
-    file_name, silver_key = record["FileName"], record["Key"]
-
-    version = contract.bronze_to_silver.version_for(file_name)
-    reader = build_file_type(version.destination, s3, None)
-    silver = reader.get(settings.bucket_silver, silver_key)
-    gold = to_gold(silver, columns, file_name)
-
-    prefix = layer.gold_prefix()
-    Parquet(s3, schema=arrow_schema(columns)).put(
-        gold, settings.bucket_gold, prefix, file_name
-    )
-    gold_key = f"{prefix}/{file_name}.parquet"
-
-    logger.info(
-        f"{file_name}: {len(silver)} linha(s) lida(s) da silver, "
-        f"{len(gold)} gravada(s) em {settings.bucket_gold}/{gold_key} "
-        f"(dt_ref {gold['dt_ref'].iloc[0] if len(gold) else '-'})"
-    )
-    return {"FileName": file_name, "Key": gold_key, "rows": len(gold)}
+    return SilverToGold(_contract(contract)).run(record["FileName"], record["Key"])
 
 
 @task(map_index_template="{{ file_name }}", max_active_tis_per_dagrun=1)

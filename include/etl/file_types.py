@@ -110,7 +110,9 @@ class XLS:
 FILE_TYPES = {"parquet": Parquet, "csv": CSV, "xlsx": XLSX, "html": HTML, "xls": XLS}
 
 
-def build_file_type(spec: FileSpec, s3: S3Client, schema: pa.Schema | None):
+def build_file_type(
+    spec: FileSpec, s3: S3Client, schema: pa.Schema | None = None
+):
     """Instancia um formato a partir do `FileSpec` do contrato."""
     if spec.type == "parquet":
         return Parquet(s3, schema=schema)
