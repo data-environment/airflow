@@ -51,11 +51,20 @@ class ColumnSpec(_Spec):
     pattern: str | None = None
 
 
+class FilterRule(_Spec):
+    """Descarta as linhas em que `column` (cabeçalho na bronze) casa com
+    `value` segundo `op`."""
+
+    column: str
+    op: Literal["startswith", "equals", "contains", "regex"] = "startswith"
+    value: str
+
+
 class ContractVersion(_Spec):
     valid_from: date = Field(alias="from")
     origin: FileSpec
     destination: FileSpec
-    footer_column: str | None = None
+    filter_rules: list[FilterRule] = []
     columns: list[ColumnSpec] = Field(min_length=1)
 
 

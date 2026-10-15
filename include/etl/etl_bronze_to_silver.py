@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 
 
 class BronzeToSilver:
-    FOOTER_MARKER = "Filtros aplicados"
     NULL_MARKERS = {"", "nan", "none", "null", "''"}
     MAX_ERRORS = 10
 
@@ -57,7 +56,7 @@ class BronzeToSilver:
 
     def transform(self, bronze: DataFrame, version: ContractVersion) -> DataFrame:
         columns = version.columns
-        df = self._drop_empty_and_footer(bronze, version)
+        df = self._drop_empty_and_filtered(bronze, version)
         self._check_required_columns(df, columns)
 
         model = self._build_model(columns)
@@ -94,16 +93,24 @@ class BronzeToSilver:
 
         return pd.DataFrame(rows, columns=[column.name for column in columns])
 
-    def _drop_empty_and_footer(
+    def _drop_empty_and_filtered(
         self, bronze: DataFrame, version: ContractVersion
     ) -> DataFrame:
         df = bronze.dropna(how="all")
-        footer_column = version.footer_column
-        if footer_column and footer_column in df.columns:
-            df = df[~df[footer_column].astype(str).str.startswith(self.FOOTER_MARKER)]
+        for rule in version.filter_rules:
+            if rule.column not in df.columns:
+                continue
+            values = df[rule.column].astype(str)
+            if rule.op == "startswith":
+                match = values.str.startswith(rule.value)
+            elif rule.op == "equals":
+                match = values == rule.value
+            else:
+                match = values.str.contains(rule.value, regex=rule.op == "regex")
+            df = df[~match]
         if df.empty:
             raise ValueError(
-                "O arquivo está vazio (depois de remover linhas vazias e rodapé)."
+                "O arquivo está vazio (depois de remover linhas filtradas)."
             )
         return df
 

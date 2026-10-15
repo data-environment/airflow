@@ -13,7 +13,8 @@ bronze_to_silver:
   - from: 2020-01-01
     origin: {type: xlsx}
     destination: {type: csv, sep: ;, encoding: UTF-8}
-    footer_column: Codigo da Conta
+    filter_rules:
+    - {column: Codigo da Conta, op: startswith, value: Filtros aplicados}
     columns:
     - {name: cod_conta, source: Codigo da Conta}
     - {name: cod_xp_assessor, source: Código AAI}

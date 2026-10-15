@@ -13,7 +13,8 @@ bronze_to_silver:
   - from: 2020-01-01
     origin: {type: xlsx}
     destination: {type: csv, sep: ;, encoding: UTF-8}
-    footer_column: Cliente
+    filter_rules:
+    - {column: Cliente, op: startswith, value: Filtros aplicados}
     columns:
     - {name: cod_xp_cliente, source: Cliente, min_length: 3, max_length: 8, pattern: '^[0-9]+$'}
     - {name: cod_xp_assessor, source: Assessor, required: false, min_length: 4, max_length: 6, pattern: '^A[0-9]+$'}
@@ -32,7 +33,7 @@ bronze_to_silver:
 silver_to_gold:
   schema:
   - {name: cod_xp_cliente, type: string}
-  - {name: cod_xp_assessor, type: string, only_digits: true}
+  - {name: cod_xp_assessor, type: string}
   - {name: id_trade_idea, type: string}
   - {name: trade_idea, type: string}
   - {name: nome_analista, type: string}
