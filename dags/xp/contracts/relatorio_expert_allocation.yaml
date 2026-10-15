@@ -1,0 +1,61 @@
+pipeline: relatorio_expert_allocation
+description: 'XP relatório expert allocation: bronze → silver → gold → Redshift.'
+owner: dw
+tags:
+- relatorio_expert_allocation
+schedule: 12 22 * * 1-5
+retries: 1
+s3:
+  path: investsmart/xp_inc/relatorio_expert_allocation
+  file: relatorio_expert_allocation
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    filter_rules:
+    - {column: ID da Atividade, op: startswith, value: Filtros aplicados}
+    columns:
+    - {name: id_atividade, source: ID da Atividade}
+    - {name: dt_ativacao, source: Data da Ativação, required: false}
+    - {name: dt_vencimento, source: Data de Vencimento, required: false}
+    - {name: fator_risco_indexador, source: Fator de Risco/Indexador, required: false}
+    - {name: classificacao_atividade, source: Classificação da Atividade, required: false}
+    - {name: filtro, source: Filtro, required: false}
+    - {name: nome_matriz, source: Matriz, required: false}
+    - {name: cod_xp_assessor, source: Código do Assessor, pattern: '^A?[0-9]+$'}
+    - {name: cod_xp_cliente, source: Conta}
+    - {name: status, source: Status}
+    - {name: classificacao_produto, source: Classificação do Produto, required: false}
+    - {name: nome_atividade, source: Nome da Atividade, required: false}
+    - {name: dt_acao_tomada, source: Data da Ação Tomada, required: false}
+    - {name: motivo_acao, source: Motivo da ação, required: false}
+    - {name: flag_conversao_fator_risco, source: Conversão do Fator de Risco, required: false}
+    - {name: vlr_potencial_atividade, source: Valor Potencial da Atividade, type: decimal, required: false}
+    - {name: flag_atividade_tratada, source: Flag Atividade Tratada, required: false}
+silver_to_gold:
+  schema:
+  - {name: id_atividade, type: string}
+  - {name: dt_ativacao, type: date64}
+  - {name: dt_vencimento, type: date64}
+  - {name: fator_risco_indexador, type: string}
+  - {name: classificacao_atividade, type: string}
+  - {name: filtro, type: string}
+  - {name: nome_matriz, type: string}
+  - {name: cod_xp_assessor, type: string, only_digits: true}
+  - {name: cod_xp_cliente, type: string}
+  - {name: status, type: string}
+  - {name: classificacao_produto, type: string}
+  - {name: nome_atividade, type: string}
+  - {name: dt_acao_tomada, type: date64}
+  - {name: motivo_acao, type: string}
+  - {name: flag_conversao_fator_risco, type: bool}
+  - {name: vlr_potencial_atividade, type: float64}
+  - {name: flag_atividade_tratada, type: bool}
+  - {name: dt_ref, type: date64}
+  - {name: id_calendario_dt_ref, type: int32}
+redshift:
+  database: dw
+  schema: xp_inc
+  table: relatorio_expert_allocation
+  load_mode: replace_partition

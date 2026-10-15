@@ -30,8 +30,8 @@ silver_to_gold:
   - {name: nome_cliente, type: string}
   - {name: dt_contratacao, type: 'timestamp[ns]'}
   - {name: taxa_contratacao, type: float64}
-  - {name: flag_excecao_rv, type: string}
-  - {name: flag_resgate_fundo, type: string}
+  - {name: flag_excecao_rv, type: bool}
+  - {name: flag_resgate_fundo, type: bool}
   - {name: cod_xp_assessor, type: string, only_digits: true}
   - {name: status, type: string}
   - {name: dt_ref, type: date64}

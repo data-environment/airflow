@@ -1,0 +1,84 @@
+pipeline: modelo_de_servir
+description: 'XP modelo de servir: bronze → silver → gold → Redshift.'
+owner: dw
+tags:
+- modelo_de_servir
+schedule: 9 22 * * 1-5
+retries: 1
+s3:
+  path: investsmart/xp_inc/modelo_de_servir
+  file: modelo_de_servir
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    filter_rules:
+    - {column: Cód. Assessor, op: startswith, value: Filtros aplicados}
+    columns:
+    - {name: cod_xp_assessor, source: Cód. Assessor, pattern: '^A?[0-9]{4,5}$'}
+    - {name: nome_assessor, source: Nome Assessor, min_length: 1, max_length: 256}
+    - {name: cod_xp_cliente, source: Cód. Conta, min_length: 2, max_length: 9}
+    - {name: modelo, source: Modelo, required: false, min_length: 1, max_length: 64}
+    - {name: vlr_auc, source: AuC, type: decimal}
+    - {name: flag_financial_planning, source: Financial Planning, required: false}
+    - {name: flag_open_investment, source: Open Investment, required: false}
+    - {name: flag_conta_acessada, source: Conta Acessada, required: false}
+    - {name: flag_ordem_enviada, source: Ordem Enviada, required: false}
+    - {name: flag_xperformance, source: XPerformance, required: false}
+    - {name: flag_ativ_relacionamento, source: Ativ. de Relacionamento, required: false}
+    - {name: indice_modelo_servir, source: Índice Modelo de Servir, type: decimal}
+    - {name: qtd_dias_vencimento_fp, source: Dias até Vencimento FP, type: decimal, required: false}
+    - {name: qtd_dias_vencimento_conta_acessada, source: Dias até Vencimento Conta Acessada, type: decimal, required: false}
+    - {name: qtd_dias_vencimento_ordem_enviada, source: Dias até Vencimento Ordem Enviada, type: decimal, required: false}
+    - {name: qtd_dias_vencimento_xperformance, source: Dias até Vencimento XPerformance, type: decimal, required: false}
+    - {name: qtd_dias_vencimento_ativ_critica_tratada, source: Dias até Vencimento Ativ. de Relacionamento, type: decimal, required: false}
+  - from: 2026-08-20
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    filter_rules:
+    - {column: Cód. Assessor, op: startswith, value: Filtros aplicados}
+    columns:
+    - {name: cod_xp_assessor, source: Cód. Assessor, pattern: '^A?[0-9]{4,5}$'}
+    - {name: nome_assessor, source: Nome Assessor, min_length: 1, max_length: 256}
+    - {name: cod_xp_cliente, source: Cód. Conta, min_length: 2, max_length: 9}
+    - {name: modelo, source: Modelo, required: false, min_length: 1, max_length: 64}
+    - {name: vlr_auc, source: AuC, type: decimal}
+    - {name: flag_financial_planning, source: Financial Planning, required: false}
+    - {name: flag_open_investment, source: Open Investment, required: false}
+    - {name: flag_conta_acessada, source: Conta Acessada, required: false}
+    - {name: flag_ordem_enviada, source: Ordem Enviada, required: false}
+    - {name: flag_xperformance, source: XPerformance, required: false}
+    - {name: flag_ativ_relacionamento, source: Ativ. de Relacionamento, required: false}
+    - {name: indice_modelo_servir, source: Índice Modelo de Servir, type: decimal}
+    - {name: qtd_dias_vencimento_fp, source: Dias até Vencimento FP, type: decimal, required: false}
+    - {name: qtd_dias_vencimento_conta_acessada, source: Dias até Vencimento Conta Acessada, type: decimal, required: false}
+    - {name: qtd_dias_vencimento_ordem_enviada, source: Dias até Vencimento Ordem Enviada, type: decimal, required: false}
+    - {name: qtd_dias_vencimento_xperformance, source: Dias até Vencimento XPerformance, type: decimal, required: false}
+    - {name: qtd_dias_vencimento_ativ_critica_tratada, source: Dias até Vencimento Ativ. Crítica Tratada, type: decimal, required: false}
+silver_to_gold:
+  schema:
+  - {name: cod_xp_assessor, type: string, only_digits: true}
+  - {name: nome_assessor, type: string}
+  - {name: cod_xp_cliente, type: string}
+  - {name: modelo, type: string}
+  - {name: vlr_auc, type: float64}
+  - {name: flag_financial_planning, type: bool}
+  - {name: flag_open_investment, type: bool}
+  - {name: flag_conta_acessada, type: bool}
+  - {name: flag_ordem_enviada, type: bool}
+  - {name: flag_xperformance, type: bool}
+  - {name: flag_ativ_relacionamento, type: bool}
+  - {name: indice_modelo_servir, type: int32}
+  - {name: qtd_dias_vencimento_fp, type: int32}
+  - {name: qtd_dias_vencimento_conta_acessada, type: int32}
+  - {name: qtd_dias_vencimento_ordem_enviada, type: int32}
+  - {name: qtd_dias_vencimento_xperformance, type: int32}
+  - {name: qtd_dias_vencimento_ativ_critica_tratada, type: int32}
+  - {name: dt_ref, type: date64}
+  - {name: id_calendario_dt_ref, type: int32}
+redshift:
+  database: dw
+  schema: xp_inc
+  table: modelo_de_servir
+  load_mode: replace_partition

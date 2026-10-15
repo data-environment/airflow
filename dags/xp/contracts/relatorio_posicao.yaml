@@ -1,0 +1,121 @@
+pipeline: relatorio_posicao
+description: 'XP relatório de posição: bronze → silver → gold → Redshift.'
+owner: dw
+tags:
+- relatorio_posicao
+schedule: 24 22 * * 1-5
+retries: 1
+s3:
+  path: investsmart/xp_inc/relatorio_posicao
+  file: relatorio_posicao
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    filter_rules:
+    - {column: Código do Cliente, op: startswith, value: Filtros aplicados}
+    columns:
+    - {name: cod_xp_cliente, source: Código do Cliente, min_length: 2, max_length: 9}
+    - {name: cod_xp_assessor, source: Código do Assessor, pattern: '^A[0-9]+$', min_length: 4, max_length: 6}
+    - {name: id_operacao, source: Código da Operação, required: false, min_length: 2, max_length: 25}
+    - {name: dt_registro, source: Data Registro, required: false}
+    - {name: ativo, source: Ativo, required: false, min_length: 0, max_length: 100}
+    - {name: estrutura, source: Estrutura, required: false, min_length: 0, max_length: 100}
+    - {name: canal_origem, source: Canal de Origem, required: false, min_length: 0, max_length: 100}
+    - {name: vlr_ativo, source: Valor Ativo, type: decimal, required: false}
+    - {name: dt_vencimento, source: Data Vencimento, required: false}
+    - {name: custo_unitario_cliente, source: Custo Unitário Cliente, type: decimal, required: false}
+    - {name: vlr_comissao_assessor, source: Comissão Assessor, type: decimal, required: false}
+    - {name: qtd_ativa_1, source: Quantidade Ativa (1), type: decimal, required: false}
+    - {name: quantidade_boleta_1, source: Quantidade Boleta (1), type: decimal, required: false}
+    - {name: tipo_1, source: Tipo (1), required: false, min_length: 0, max_length: 50}
+    - {name: pct_strike_1, source: '% do Strike (1)', type: decimal, required: false}
+    - {name: vlr_strike_1, source: Valor do Strike (1), type: decimal, required: false}
+    - {name: pct_barreira_1, source: '% da Barreira (1)', type: decimal, required: false}
+    - {name: vlr_barreira_1, source: Valor da Barreira (1), type: decimal, required: false}
+    - {name: vlr_rebate_1, source: Valor do Rebate (1), type: decimal, required: false}
+    - {name: tipo_barreira_1, source: Tipo da Barreira (1), required: false, min_length: 0, max_length: 50}
+    - {name: qtd_ativa_2, source: Quantidade Ativa (2), type: decimal, required: false}
+    - {name: quantidade_boleta_2, source: Quantidade Boleta (2), type: decimal, required: false}
+    - {name: tipo_2, source: Tipo (2), required: false, min_length: 0, max_length: 50}
+    - {name: pct_strike_2, source: '% do Strike (2)', type: decimal, required: false}
+    - {name: vlr_strike_2, source: Valor do Strike (2), type: decimal, required: false}
+    - {name: pct_barreira_2, source: '% da Barreira (2)', type: decimal, required: false}
+    - {name: vlr_barreira_2, source: Valor da Barreira (2), type: decimal, required: false}
+    - {name: vlr_rebate_2, source: Valor do Rebate (2), type: decimal, required: false}
+    - {name: tipo_barreira_2, source: Tipo da Barreira (2), required: false, min_length: 0, max_length: 50}
+    - {name: qtd_ativa_3, source: Quantidade Ativa (3), type: decimal, required: false}
+    - {name: quantidade_boleta_3, source: Quantidade Boleta (3), type: decimal, required: false}
+    - {name: tipo_3, source: Tipo (3), required: false, min_length: 0, max_length: 50}
+    - {name: pct_strike_3, source: '% do Strike (3)', type: decimal, required: false}
+    - {name: vlr_strike_3, source: Valor do Strike (3), type: decimal, required: false}
+    - {name: pct_barreira_3, source: '% da Barreira (3)', type: decimal, required: false}
+    - {name: vlr_barreira_3, source: Valor da Barreira (3), type: decimal, required: false}
+    - {name: vlr_rebate_3, source: Valor do Rebate (3), type: decimal, required: false}
+    - {name: tipo_barreira_3, source: Tipo da Barreira (3), required: false, min_length: 0, max_length: 50}
+    - {name: qtd_ativa_4, source: Quantidade Ativa (4), type: decimal, required: false}
+    - {name: quantidade_boleta_4, source: Quantidade Boleta (4), type: decimal, required: false}
+    - {name: tipo_4, source: Tipo (4), required: false, min_length: 0, max_length: 50}
+    - {name: pct_strike_4, source: '% do Strike (4)', type: decimal, required: false}
+    - {name: vlr_strike_4, source: Valor do Strike (4), type: decimal, required: false}
+    - {name: pct_barreira_4, source: '% da Barreira (4)', type: decimal, required: false}
+    - {name: vlr_barreira_4, source: Valor da Barreira (4), type: decimal, required: false}
+    - {name: vlr_rebate_4, source: Valor do Rebate (4), type: decimal, required: false}
+    - {name: tipo_barreira_4, source: Tipo da Barreira (4), required: false, min_length: 0, max_length: 50}
+silver_to_gold:
+  schema:
+  - {name: cod_xp_cliente, type: string, only_digits: true}
+  - {name: cod_xp_assessor, type: string}
+  - {name: id_operacao, type: string, only_digits: true}
+  - {name: dt_registro, type: date64}
+  - {name: ativo, type: string}
+  - {name: estrutura, type: string}
+  - {name: canal_origem, type: string}
+  - {name: vlr_ativo, type: float64}
+  - {name: dt_vencimento, type: date64}
+  - {name: custo_unitario_cliente, type: float64}
+  - {name: vlr_comissao_assessor, type: float64}
+  - {name: qtd_ativa_1, type: float64}
+  - {name: quantidade_boleta_1, type: float64}
+  - {name: tipo_1, type: string}
+  - {name: pct_strike_1, type: float64}
+  - {name: vlr_strike_1, type: float64}
+  - {name: pct_barreira_1, type: float64}
+  - {name: vlr_barreira_1, type: float64}
+  - {name: vlr_rebate_1, type: float64}
+  - {name: tipo_barreira_1, type: string}
+  - {name: qtd_ativa_2, type: float64}
+  - {name: quantidade_boleta_2, type: float64}
+  - {name: tipo_2, type: string}
+  - {name: pct_strike_2, type: float64}
+  - {name: vlr_strike_2, type: float64}
+  - {name: pct_barreira_2, type: float64}
+  - {name: vlr_barreira_2, type: float64}
+  - {name: vlr_rebate_2, type: float64}
+  - {name: tipo_barreira_2, type: string}
+  - {name: qtd_ativa_3, type: float64}
+  - {name: quantidade_boleta_3, type: float64}
+  - {name: tipo_3, type: string}
+  - {name: pct_strike_3, type: float64}
+  - {name: vlr_strike_3, type: float64}
+  - {name: pct_barreira_3, type: float64}
+  - {name: vlr_barreira_3, type: float64}
+  - {name: vlr_rebate_3, type: float64}
+  - {name: tipo_barreira_3, type: string}
+  - {name: qtd_ativa_4, type: float64}
+  - {name: quantidade_boleta_4, type: float64}
+  - {name: tipo_4, type: string}
+  - {name: pct_strike_4, type: float64}
+  - {name: vlr_strike_4, type: float64}
+  - {name: pct_barreira_4, type: float64}
+  - {name: vlr_barreira_4, type: float64}
+  - {name: vlr_rebate_4, type: float64}
+  - {name: tipo_barreira_4, type: string}
+  - {name: dt_ref, type: date64}
+  - {name: id_calendario_dt_ref, type: int32}
+redshift:
+  database: dw
+  schema: xp_inc
+  table: relatorio_posicao
+  load_mode: replace_partition

@@ -1,0 +1,75 @@
+pipeline: indice_de_ruptura
+description: 'XP índice de ruptura: bronze → silver → gold → Redshift.'
+owner: dw
+tags:
+- indice_de_ruptura
+schedule: 3 22 * * 1-5
+retries: 1
+s3:
+  path: investsmart/xp_inc/indice_de_ruptura
+  file: indice_de_ruptura
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    filter_rules:
+    - {column: Cód. Assessor, op: startswith, value: Filtros aplicados}
+    columns:
+    - {name: cod_xp_assessor, source: Cód. Assessor, pattern: '^A?[0-9]{4,5}$'}
+    - {name: nome_assessor, source: Nome Assessor, min_length: 1, max_length: 256}
+    - {name: cod_xp_cliente, source: Cód. Conta, min_length: 2, max_length: 9}
+    - {name: modelo, source: Modelo, required: false, min_length: 1, max_length: 64}
+    - {name: vlr_auc, source: AuC, type: decimal, required: false}
+    - {name: nps_detrator, source: NPS Detrator, type: decimal, required: false}
+    - {name: flag_stvm_out, source: STVM Out, required: false}
+    - {name: flag_controle_alocacao, source: Alocação Indevida, required: false}
+    - {name: flag_monoproduto_cross_sell, source: Monoproduto Cross-Sell, required: false}
+    - {name: flag_sem_aportes, source: Sem Aportes, required: false}
+    - {name: flag_rentabilidade_negativa, source: Rentabilidade Negativa, required: false}
+    - {name: flag_sem_ordem, source: Sem Ordem, required: false}
+    - {name: pontuacao_ruptura, source: Pontuação Ruptura, type: decimal, required: false}
+    - {name: qtd_meses_ruptura, source: Meses em Ruptura, type: decimal, required: false}
+  - from: 2026-08-20
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    filter_rules:
+    - {column: Cód. Assessor, op: startswith, value: Filtros aplicados}
+    columns:
+    - {name: cod_xp_assessor, source: Cód. Assessor, pattern: '^A?[0-9]{4,5}$'}
+    - {name: nome_assessor, source: Nome Assessor, min_length: 1, max_length: 256}
+    - {name: cod_xp_cliente, source: Cód. Conta, min_length: 2, max_length: 9}
+    - {name: modelo, source: Modelo, required: false, min_length: 1, max_length: 64}
+    - {name: vlr_auc, source: AuC, type: decimal, required: false}
+    - {name: nps_detrator, source: NPS Detrator, type: decimal, required: false}
+    - {name: flag_stvm_out, source: STVM Out, required: false}
+    - {name: flag_controle_alocacao, source: Controle de Alocação, required: false}
+    - {name: flag_monoproduto_cross_sell, source: Monoproduto Cross-Sell, required: false}
+    - {name: flag_sem_aportes, source: Sem Aportes, required: false}
+    - {name: flag_rentabilidade_negativa, source: Rentabilidade Negativa, required: false}
+    - {name: flag_sem_ordem, source: Sem Ordem, required: false}
+    - {name: pontuacao_ruptura, source: Pontuação Ruptura, type: decimal, required: false}
+    - {name: qtd_meses_ruptura, source: Meses em Ruptura, type: decimal, required: false}
+silver_to_gold:
+  schema:
+  - {name: cod_xp_assessor, type: string, only_digits: true}
+  - {name: nome_assessor, type: string}
+  - {name: cod_xp_cliente, type: string, only_digits: true}
+  - {name: modelo, type: string}
+  - {name: vlr_auc, type: float64}
+  - {name: nps_detrator, type: int32}
+  - {name: flag_stvm_out, type: bool}
+  - {name: flag_controle_alocacao, type: bool}
+  - {name: flag_monoproduto_cross_sell, type: bool}
+  - {name: flag_sem_aportes, type: bool}
+  - {name: flag_rentabilidade_negativa, type: bool}
+  - {name: flag_sem_ordem, type: bool}
+  - {name: pontuacao_ruptura, type: int32}
+  - {name: qtd_meses_ruptura, type: int32}
+  - {name: dt_ref, type: date64}
+  - {name: id_calendario_dt_ref, type: int32}
+redshift:
+  database: dw
+  schema: xp_inc
+  table: indice_de_ruptura
+  load_mode: replace_partition

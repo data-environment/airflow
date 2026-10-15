@@ -1,0 +1,81 @@
+pipeline: indice_de_saude
+description: 'XP índice de saúde: bronze → silver → gold → Redshift.'
+owner: dw
+tags:
+- indice_de_saude
+schedule: 6 22 * * 1-5
+retries: 1
+s3:
+  path: investsmart/xp_inc/indice_de_saude
+  file: indice_de_saude
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    filter_rules:
+    - {column: Ano Mês, op: startswith, value: Filtros aplicados}
+    columns:
+    - {name: cod_xp_assessor, source: Cód. Assessor, pattern: '^A?[0-9]{4,5}$'}
+    - {name: nome_assessor, source: Nome Assessor, min_length: 1, max_length: 256}
+    - {name: cod_xp_cliente, source: Cód. Conta, min_length: 2, max_length: 9}
+    - {name: modelo, source: Modelo, required: false, min_length: 1, max_length: 64}
+    - {name: vlr_auc, source: AuC, type: decimal, required: false}
+    - {name: pontuacao_aportes, source: Pontuação Aportes, type: decimal, required: false}
+    - {name: pontuacao_variacao_auc, source: Pontuação Share of Wallet, type: decimal, required: false}
+    - {name: pontuacao_rentabilidade, source: Pontuação Rentabilidade, type: decimal, required: false}
+    - {name: pontuacao_cross_sell, source: Pontuação Cross-Sell, type: decimal, required: false}
+    - {name: pontuacao_aderencia, source: Pontuação Diversificação, type: decimal, required: false}
+    - {name: indice_saude_cliente, source: Índice de Saúde do Cliente, type: decimal, required: false}
+    - {name: qtd_meses_aporte_u12m, source: Quantidade de meses com Aporte nos U12M, type: decimal, required: false}
+    - {name: pct_variacao_auc, source: Share of Wallet (Auc/PLA), required: false}
+    - {name: pct_rentabilidade_bruta_relativa_cdi, source: Rentabilidade Relativa ao CDI, type: decimal, required: false}
+    - {name: qtd_produtos_cross_sell, source: Quantidade de Produtos Cross-Sell, type: decimal, required: false}
+    - {name: pct_aderencia, source: Aderência, required: false}
+  - from: 2026-08-20
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    filter_rules:
+    - {column: Ano Mês, op: startswith, value: Filtros aplicados}
+    columns:
+    - {name: cod_xp_assessor, source: Cód. Assessor, pattern: '^A?[0-9]{4,5}$'}
+    - {name: nome_assessor, source: Nome Assessor, min_length: 1, max_length: 256}
+    - {name: cod_xp_cliente, source: Cód. Conta, min_length: 2, max_length: 9}
+    - {name: modelo, source: Modelo, required: false, min_length: 1, max_length: 64}
+    - {name: vlr_auc, source: AuC, type: decimal, required: false}
+    - {name: pontuacao_aportes, source: Pontuação Aportes, type: decimal, required: false}
+    - {name: pontuacao_variacao_auc, source: Pontuação Variação de AuC, type: decimal, required: false}
+    - {name: pontuacao_rentabilidade, source: Pontuação Rentabilidade, type: decimal, required: false}
+    - {name: pontuacao_cross_sell, source: Pontuação Cross-Sell, type: decimal, required: false}
+    - {name: pontuacao_aderencia, source: Pontuação Aderência, type: decimal, required: false}
+    - {name: indice_saude_cliente, source: Índice de Saúde do Cliente, type: decimal, required: false}
+    - {name: qtd_meses_aporte_u12m, source: Quantidade de meses com Aporte nos U12M, type: decimal, required: false}
+    - {name: pct_variacao_auc, source: Variação de AuC, required: false}
+    - {name: pct_rentabilidade_bruta_relativa_cdi, source: Rentabilidade Bruta Relativa ao CDI, type: decimal, required: false}
+    - {name: qtd_produtos_cross_sell, source: Quantidade de Produtos Cross-Sell, type: decimal, required: false}
+    - {name: pct_aderencia, source: Aderência}
+silver_to_gold:
+  schema:
+  - {name: cod_xp_assessor, type: string, only_digits: true}
+  - {name: nome_assessor, type: string}
+  - {name: cod_xp_cliente, type: string}
+  - {name: modelo, type: string}
+  - {name: vlr_auc, type: float64}
+  - {name: pontuacao_aportes, type: float64}
+  - {name: pontuacao_variacao_auc, type: float64}
+  - {name: pontuacao_rentabilidade, type: float64}
+  - {name: pontuacao_cross_sell, type: float64}
+  - {name: pontuacao_aderencia, type: float64}
+  - {name: indice_saude_cliente, type: float64}
+  - {name: qtd_meses_aporte_u12m, type: int32}
+  - {name: pct_variacao_auc, type: string}
+  - {name: pct_rentabilidade_bruta_relativa_cdi, type: float64}
+  - {name: qtd_produtos_cross_sell, type: int32}
+  - {name: pct_aderencia, type: string}
+  - {name: dt_ref, type: date64}
+  - {name: id_calendario_dt_ref, type: int32}
+redshift:
+  database: dw
+  schema: xp_inc
+  table: indice_de_saude
+  load_mode: replace_partition
