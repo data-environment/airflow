@@ -79,6 +79,13 @@ class GoldToRedshift:
                 f"s3://{self.layer.settings.bucket_gold}/{gold_key}",
                 staging_columns,
             )
+            if self.contract.quality:
+                from include.etl.quality import QualityChecker
+
+                QualityChecker(self.contract, self.client).run(
+                    staging_table, dt_ref, rows
+                )
+
             deleted = self.client.replace_partition_from_staging(
                 schema, table, staging_table, business_columns, f"dt_ref = '{dt_ref}'"
             )

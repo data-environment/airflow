@@ -1,7 +1,7 @@
 import logging
 from typing import TYPE_CHECKING
 
-from airflow.sdk import get_current_context, task
+from airflow.sdk import PokeReturnValue, get_current_context, task
 
 if TYPE_CHECKING:
     from include.etl.contract import Contract
@@ -14,6 +14,24 @@ def _contract(contract: dict) -> "Contract":
     from include.etl.contract import Contract
 
     return Contract.model_validate(contract)
+
+
+@task.sensor(mode="reschedule", timeout=24 * 60 * 60, soft_fail=True)
+def wait_for_bronze_files(contract: dict) -> PokeReturnValue:
+    """Sensor dos contratos com `sensor_interval`: libera o pipeline quando há
+    arquivo novo ou modificado na bronze em relação à silver. O intervalo
+    entre checagens vem do contrato (`.override(poke_interval=...)`)."""
+    from include.etl.layer import files_to_records
+    from include.etl.layer_comparator import LayerComparator
+
+    layer = _contract(contract).layer()
+    pending = LayerComparator().between_layers(
+        "bronze",
+        files_to_records(layer.get_bronze_files()),
+        "silver",
+        files_to_records(layer.get_silver_files()),
+    )
+    return PokeReturnValue(is_done=bool(pending))
 
 
 @task

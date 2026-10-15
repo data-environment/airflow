@@ -1,0 +1,176 @@
+pipeline: positivador
+description: 'XP positivador: bronze → silver → gold → Redshift.'
+owner: dw
+tags:
+- positivador
+sensor_interval: 5400
+retries: 1
+s3:
+  path: investsmart/xp_inc/positivador
+  file: positivador
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: csv, sep: ',', encoding: UTF-8}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    columns:
+    - {name: cod_xp_assessor, source: Assessor, min_length: 4, max_length: 6}
+    - {name: cod_xp_cliente, source: Cód_do_Cliente, min_length: 2, max_length: 9}
+    - {name: profissao, source: Profissão, required: false, min_length: 2, max_length: 255}
+    - {name: sexo, source: Sexo, required: false, min_length: 1, max_length: 1}
+    - {name: segmento, source: Segmento, required: false}
+    - {name: segmentacao_cliente, source: Segmentação Cliente, required: false}
+    - {name: suitability, source: Suitability, required: false}
+    - {name: termo_qualificado, source: Termo Qualificado, required: false}
+    - {name: termo_profissional, source: Termo Profissional, required: false}
+    - {name: dt_cadastro, source: Data_de_Cadastro}
+    - {name: segundo_aporte, source: Fez_Segundo_Aporte_, required: false, min_length: 3, max_length: 3}
+    - {name: dt_nascimento, source: Data_de_Nascimento, required: false}
+    - {name: status, source: Status, required: false, min_length: 5, max_length: 7}
+    - {name: ativou_m, source: Ativou_em_M_, required: false, min_length: 3, max_length: 3}
+    - {name: evadiu_m, source: Evadiu_em_M_, required: false, min_length: 3, max_length: 3}
+    - {name: operou_bolsa, source: Operou_Bolsa_, required: false, min_length: 3, max_length: 3}
+    - {name: operou_fundo, source: Operou_Fundo_, required: false, min_length: 3, max_length: 3}
+    - {name: operou_renda_fixa, source: Operou_Renda_Fixa_, required: false, min_length: 3, max_length: 3}
+    - {name: aplicacao_financeira_declarada, source: Aplicação_Financeira_Declarada_Ajustada, type: decimal, required: false}
+    - {name: vlr_receita_mes, source: Receita_no_Mês, type: decimal, required: false}
+    - {name: vlr_receita_bovespa, source: Receita_Bovespa, type: decimal, required: false}
+    - {name: vlr_receita_futuros, source: Receita_Futuros, type: decimal, required: false}
+    - {name: vlr_receita_rf_bancarios, source: Receita_RF_Bancários, type: decimal, required: false}
+    - {name: vlr_receita_rf_privados, source: Receita_RF_Privados, type: decimal, required: false}
+    - {name: vlr_receita_rf_publicos, source: Receita_RF_Públicos, type: decimal, required: false}
+    - {name: vlr_captacao_bruta_m, source: Captação_Bruta_em_M, type: decimal, required: false}
+    - {name: vlr_resgate_m, source: Resgate_em_M, type: decimal, required: false}
+    - {name: vlr_captacao_liquida_m, source: Captação_Líquida_em_M1, type: decimal, required: false}
+    - {name: vlr_captacao_ted, source: Captação_TED, type: decimal, required: false}
+    - {name: vlr_captacao_st, source: Captação_ST, type: decimal, required: false}
+    - {name: vlr_captacao_ota, source: Captação_OTA, type: decimal, required: false}
+    - {name: vlr_captacao_rf, source: Captação_RF, type: decimal, required: false}
+    - {name: vlr_captacao_td, source: Captação_TD, type: decimal, required: false}
+    - {name: vlr_captacao_prev, source: Captação_PREV, type: decimal, required: false}
+    - {name: vlr_net_mme1, source: Net_em_M_1, type: decimal, required: false}
+    - {name: vlr_net_m, source: Net_Em_M1, type: decimal, required: false}
+    - {name: vlr_net_renda_fixa, source: Net_Renda_Fixa, type: decimal, required: false}
+    - {name: vlr_net_fundos_imobiliarios, source: Net_Fundos_Imobiliários, type: decimal, required: false}
+    - {name: vlr_net_renda_variavel, source: Net_Renda_Variável, type: decimal, required: false}
+    - {name: vlr_net_fundos, source: Net_Fundos, type: decimal, required: false}
+    - {name: vlr_net_financeiro, source: Net_Financeiro, type: decimal, required: false}
+    - {name: vlr_net_previdencia, source: Net_Previdência, type: decimal, required: false}
+    - {name: vlr_net_outros, source: Net_Outros, type: decimal, required: false}
+    - {name: vlr_receita_aluguel, source: Receita_Aluguel, type: decimal, required: false}
+    - {name: vlr_receita_complemento_pacote_corretagem, source: Receita_Complemento_Pacote_Corretagem, type: decimal, required: false}
+    - {name: tipo_pessoa, source: Tipo_Pessoa, required: false, min_length: 10, max_length: 15}
+    - {name: dt_posicao, source: Data_Atualização, required: false}
+  - from: 2026-10-01
+    origin: {type: csv, sep: ',', encoding: UTF-8}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    columns:
+    - {name: cod_xp_assessor, source: Assessor, min_length: 4, max_length: 6}
+    - {name: cod_xp_cliente, source: Cliente, min_length: 2, max_length: 9}
+    - {name: profissao, source: Profissão, required: false, min_length: 2, max_length: 255}
+    - {name: sexo, source: Sexo, required: false, min_length: 1, max_length: 10}
+    - {name: segmento, source: Segmento, required: false, min_length: 2, max_length: 50}
+    - {name: segmentacao_cliente, source: Segmentação Cliente, required: false, min_length: 4, max_length: 50}
+    - {name: suitability, source: Suitability, required: false, min_length: 4, max_length: 50}
+    - {name: termo_qualificado, source: Termo Qualificado, required: false, min_length: 1, max_length: 1}
+    - {name: termo_profissional, source: Termo Profissional, required: false, min_length: 1, max_length: 1}
+    - {name: dt_cadastro, source: Data de Cadastro, required: false}
+    - {name: segundo_aporte, source: 'Fez Segundo Aporte?', required: false, min_length: 3, max_length: 3}
+    - {name: dt_nascimento, source: Data de Nascimento, required: false}
+    - {name: status, source: Status, required: false, min_length: 5, max_length: 7}
+    - {name: ativou_m, source: 'Ativou em M?', required: false, min_length: 3, max_length: 3}
+    - {name: evadiu_m, source: 'Evadiu em M?', required: false, min_length: 3, max_length: 3}
+    - {name: operou_bolsa, source: 'Operou Bolsa?', required: false, min_length: 3, max_length: 3}
+    - {name: operou_fundo, source: 'Operou Fundo?', required: false, min_length: 3, max_length: 3}
+    - {name: operou_renda_fixa, source: 'Operou Renda Fixa?', required: false, min_length: 3, max_length: 3}
+    - {name: aplicacao_financeira_declarada, source: Aplicação Financeira Declarada, type: decimal, required: false}
+    - {name: vlr_receita_mes, source: Receita no Mês, type: decimal, required: false}
+    - {name: vlr_receita_bovespa, source: Receita Bovespa, type: decimal, required: false}
+    - {name: vlr_receita_futuros, source: Receita Futuros, type: decimal, required: false}
+    - {name: vlr_receita_rf_bancarios, source: Receita RF Bancários, type: decimal, required: false}
+    - {name: vlr_receita_rf_privados, source: Receita RF Privados, type: decimal, required: false}
+    - {name: vlr_receita_rf_publicos, source: Receita RF Públicos, type: decimal, required: false}
+    - {name: vlr_captacao_bruta_m, source: Captação Bruta em M, type: decimal, required: false}
+    - {name: vlr_resgate_m, source: Resgate em M, type: decimal, required: false}
+    - {name: vlr_captacao_liquida_m, source: Captação Líquida em M, type: decimal, required: false}
+    - {name: vlr_captacao_ted, source: Captação TED, type: decimal, required: false}
+    - {name: vlr_captacao_st, source: Captação ST, type: decimal, required: false}
+    - {name: vlr_captacao_ota, source: Captação OTA, type: decimal, required: false}
+    - {name: vlr_captacao_rf, source: Captação RF, type: decimal, required: false}
+    - {name: vlr_captacao_td, source: Captação TD, type: decimal, required: false}
+    - {name: vlr_captacao_prev, source: Captação PREV, type: decimal, required: false}
+    - {name: vlr_net_mme1, source: Net em M-1, type: decimal, required: false}
+    - {name: vlr_net_m, source: Net Em M, type: decimal, required: false}
+    - {name: vlr_net_renda_fixa, source: Renda Fixa, type: decimal, required: false}
+    - {name: vlr_net_fundos_imobiliarios, source: Fundos Imobiliários, type: decimal, required: false}
+    - {name: vlr_net_renda_variavel, source: Renda Variável, type: decimal, required: false}
+    - {name: vlr_net_fundos, source: Fundos, type: decimal, required: false}
+    - {name: vlr_net_financeiro, source: Financeiro, type: decimal, required: false}
+    - {name: vlr_net_previdencia, source: Previdência, type: decimal, required: false}
+    - {name: vlr_net_outros, source: Outros, type: decimal, required: false}
+    - {name: vlr_receita_aluguel, source: Valor Receita Aluguel, type: decimal, required: false}
+    - {name: vlr_receita_complemento_pacote_corretagem, source: Valor Receita Complemento Pacote, type: decimal, required: false}
+    - {name: tipo_pessoa, source: Tipo Pessoa, required: false, min_length: 10, max_length: 15}
+    - {name: dt_posicao, source: Data_Atualização, required: false}
+silver_to_gold:
+  schema:
+  - {name: cod_xp_assessor, type: string}
+  - {name: cod_xp_cliente, type: string}
+  - {name: profissao, type: string}
+  - {name: sexo, type: string}
+  - {name: segmento, type: string}
+  - {name: segmentacao_cliente, type: string}
+  - {name: suitability, type: string}
+  - {name: termo_qualificado, type: string}
+  - {name: termo_profissional, type: string}
+  - {name: dt_cadastro, type: date64}
+  - {name: segundo_aporte, type: string}
+  - {name: dt_nascimento, type: date64}
+  - {name: status, type: string}
+  - {name: ativou_m, type: string}
+  - {name: evadiu_m, type: string}
+  - {name: operou_bolsa, type: string}
+  - {name: operou_fundo, type: string}
+  - {name: operou_renda_fixa, type: string}
+  - {name: aplicacao_financeira_declarada, type: float64}
+  - {name: vlr_receita_mes, type: float64}
+  - {name: vlr_receita_bovespa, type: float64}
+  - {name: vlr_receita_futuros, type: float64}
+  - {name: vlr_receita_rf_bancarios, type: float64}
+  - {name: vlr_receita_rf_privados, type: float64}
+  - {name: vlr_receita_rf_publicos, type: float64}
+  - {name: vlr_captacao_bruta_m, type: float64}
+  - {name: vlr_resgate_m, type: float64}
+  - {name: vlr_captacao_liquida_m, type: float64}
+  - {name: vlr_captacao_ted, type: float64}
+  - {name: vlr_captacao_st, type: float64}
+  - {name: vlr_captacao_ota, type: float64}
+  - {name: vlr_captacao_rf, type: float64}
+  - {name: vlr_captacao_td, type: float64}
+  - {name: vlr_captacao_prev, type: float64}
+  - {name: vlr_net_mme1, type: float64}
+  - {name: vlr_net_m, type: float64}
+  - {name: vlr_net_renda_fixa, type: float64}
+  - {name: vlr_net_fundos_imobiliarios, type: float64}
+  - {name: vlr_net_renda_variavel, type: float64}
+  - {name: vlr_net_fundos, type: float64}
+  - {name: vlr_net_financeiro, type: float64}
+  - {name: vlr_net_previdencia, type: float64}
+  - {name: vlr_net_outros, type: float64}
+  - {name: vlr_receita_aluguel, type: float64}
+  - {name: vlr_receita_complemento_pacote_corretagem, type: float64}
+  - {name: tipo_pessoa, type: string}
+  - {name: dt_posicao, type: date64}
+  - {name: dt_ref, type: date64}
+  - {name: id_calendario_dt_ref, type: int32}
+redshift:
+  database: dw
+  schema: xp_inc
+  table: positivador
+  load_mode: replace_partition
+quality:
+- {check: volume, max_ratio: 1.5, last: 4}
+- {check: history_range, name: custodia, metric: SUM(vlr_net_m)}
+- {check: history_range, name: clientes, metric: COUNT(DISTINCT cod_xp_cliente)}
+- {check: history_range, name: assessores, metric: COUNT(DISTINCT cod_xp_assessor)}
+- {check: history_range, name: inativos, metric: "COUNT(CASE WHEN status = 'Inativo' THEN 1 END)"}

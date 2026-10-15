@@ -1,8 +1,8 @@
 import re
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 if TYPE_CHECKING:
     from include.etl.layer import Layer
@@ -123,12 +123,37 @@ class RedshiftSpec(_Spec):
         return f"{self.schema_name}.{self.table}"
 
 
+class VolumeCheck(_Spec):
+    """Linhas do arquivo <= média das últimas `last` dt_ref carregadas
+    x `max_ratio`."""
+
+    check: Literal["volume"]
+    max_ratio: float = 1.5
+    last: int = 4
+
+
+class HistoryRangeCheck(_Spec):
+    """`metric` (expressão SQL agregada, ex.: `SUM(vlr_net_m)`) dentro de
+    fechamento do mês anterior x (1 ± maior variação mensal dos últimos
+    `months` meses x `multiplier`)."""
+
+    check: Literal["history_range"]
+    name: str
+    metric: str
+    multiplier: float = 2
+    months: int = 12
+
+
+QualityCheck = Annotated[VolumeCheck | HistoryRangeCheck, Field(discriminator="check")]
+
+
 class Contract(_Spec):
     """Contrato de um pipeline (`dags/xp/contracts/<pipeline>.yaml`)."""
 
     pipeline: str
     description: str | None = None
     schedule: str | None = None
+    sensor_interval: int | None = Field(default=None, gt=0)
     owner: str = "dw"
     retries: int = 0
     tags: list[str] = []
@@ -136,6 +161,13 @@ class Contract(_Spec):
     bronze_to_silver: BronzeToSilverSpec
     silver_to_gold: SilverToGoldSpec
     redshift: RedshiftSpec
+    quality: list[QualityCheck] = []
+
+    @model_validator(mode="after")
+    def _one_trigger(self) -> "Contract":
+        if self.schedule and self.sensor_interval:
+            raise ValueError("use `schedule` ou `sensor_interval`, não os dois")
+        return self
 
     def layer(self) -> "Layer":
         from include.etl.layer import Layer

@@ -18,6 +18,7 @@ from include.etl.tasks import (
     list_gold_files,
     list_redshift_files,
     list_silver_files,
+    wait_for_bronze_files,
 )
 
 logger = logging.getLogger(__name__)
@@ -38,22 +39,25 @@ def load_contracts() -> list[Contract]:
 
 
 def create_dag(spec: Contract) -> DAG:
-    # As tasks recebem o contrato serializado (vai para o XCom/DAG serializada).
     contract = spec.to_xcom()
     with DAG(
         dag_id=f"xp_{spec.pipeline}",
         description=spec.description,
-        schedule=spec.schedule,
+        schedule="@continuous" if spec.sensor_interval else spec.schedule,
         start_date=START_DATE,
         catchup=False,
         max_active_runs=1,
         tags=["xp", *spec.tags],
         default_args={"owner": spec.owner, "retries": spec.retries},
     ) as dag:
+
         with TaskGroup("bronze_to_silver"):
-            pending = compare_bronze_and_silver(
-                list_bronze_files(contract), list_silver_files(contract)
-            )
+            bronze, silver = list_bronze_files(contract), list_silver_files(contract)
+            if spec.sensor_interval:
+                wait_for_bronze_files.override(poke_interval=spec.sensor_interval)(
+                    contract
+                ) >> [bronze, silver]
+            pending = compare_bronze_and_silver(bronze, silver)
             transformed = etl_bronze_to_silver.partial(contract=contract).expand(
                 record=pending
             )
