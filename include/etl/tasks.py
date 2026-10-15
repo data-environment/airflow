@@ -205,7 +205,7 @@ def compare_gold_and_redshift(gold: list[dict], redshift: list[dict]) -> list[di
 
 @task(map_index_template="{{ file_name }}")
 def etl_bronze_to_silver(contract: dict, record: dict) -> dict:
-    from include.etl.bronze_to_silver import BronzeToSilver
+    from include.etl.etl_bronze_to_silver import BronzeToSilver
 
     get_current_context()["file_name"] = record["FileName"]
     return BronzeToSilver(_contract(contract)).run(record["FileName"], record["Key"])
@@ -213,7 +213,7 @@ def etl_bronze_to_silver(contract: dict, record: dict) -> dict:
 
 @task(map_index_template="{{ file_name }}")
 def etl_silver_to_gold(contract: dict, record: dict) -> dict:
-    from include.etl.silver_to_gold import SilverToGold
+    from include.etl.etl_silver_to_gold import SilverToGold
 
     get_current_context()["file_name"] = record["FileName"]
     return SilverToGold(_contract(contract)).run(record["FileName"], record["Key"])
@@ -221,57 +221,10 @@ def etl_silver_to_gold(contract: dict, record: dict) -> dict:
 
 @task(map_index_template="{{ file_name }}", max_active_tis_per_dagrun=1)
 def etl_gold_to_redshift(contract: dict, record: dict) -> dict:
-    """Carrega um arquivo da gold no Redshift (`load_mode: replace_partition`).
-
-    Parquet → staging (tipos do schema físico do arquivo) → COPY →
-    DELETE do dt_ref + INSERT na tabela final, numa única transação.
-    A staging é por arquivo e é sempre apagada no final.
-    """
-    from include.aws.redshift.client import RedshiftClient
-    from include.aws.redshift.connection import RedshiftConnection
-    from include.etl.contract import file_date
+    """Carrega um arquivo da gold no Redshift (staging → COPY → replace_partition)."""
+    from include.etl.etl_gold_to_redshift import GoldToRedshift
 
     get_current_context()["file_name"] = record["FileName"]
-    contract = _contract(contract)
-    redshift = contract.redshift
-
-    layer = contract.layer()
-    settings = layer.settings
-    schema, table = redshift.schema_name, redshift.table
-    file_name, gold_key = record["FileName"], record["Key"]
-    dt_ref = file_date(file_name)
-    staging_table = f"stg_{table}_{dt_ref:%Y%m%d}"
-
-    client = RedshiftClient(RedshiftConnection(database=redshift.database))
-    business_columns = client.get_business_columns(schema, table)
-    staging_columns = client.build_staging_columns(
-        layer.s3_client.get_parquet_schema(settings.bucket_gold, gold_key),
-        client.get_varchar_length_hints(schema, table),
+    return GoldToRedshift(_contract(contract)).run(
+        record["FileName"], record["Key"], record.get("tipo")
     )
-    client.validate_columns_match(business_columns, staging_columns)
-
-    try:
-        client.create_staging_table(schema, staging_table, staging_columns)
-        rows = client.copy_into_staging(
-            schema,
-            staging_table,
-            f"s3://{settings.bucket_gold}/{gold_key}",
-            staging_columns,
-        )
-        deleted = client.replace_partition_from_staging(
-            schema, table, staging_table, business_columns, f"dt_ref = '{dt_ref}'"
-        )
-    finally:
-        client.drop_table(schema, staging_table)
-
-    logger.info(
-        f"{file_name} ({record.get('tipo')}): {rows} linha(s) carregada(s) em "
-        f"{redshift.database}.{schema}.{table} para dt_ref {dt_ref} "
-        f"({deleted} linha(s) anteriores substituída(s))."
-    )
-    return {
-        "FileName": file_name,
-        "dt_ref": str(dt_ref),
-        "rows": rows,
-        "deleted": deleted,
-    }
