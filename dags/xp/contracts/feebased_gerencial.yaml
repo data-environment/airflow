@@ -1,0 +1,43 @@
+pipeline: feebased_gerencial
+description: 'XP fee-based gerencial: bronze → silver → gold → Redshift.'
+owner: dw
+tags:
+- feebased_gerencial
+schedule: 27 22 * * 1-5
+retries: 1
+s3:
+  path: investsmart/xp_inc/feebased_gerencial
+  file: feebased_gerencial
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    filter_rules:
+    - {column: Código Cliente, op: startswith, value: Filtros aplicados}
+    columns:
+    - {name: cod_xp_cliente, source: Código Cliente}
+    - {name: nome_cliente, source: Nome Cliente, required: false}
+    - {name: dt_contratacao, source: Data Contratação, required: false}
+    - {name: taxa_contratacao, source: Taxa Contratação, type: decimal}
+    - {name: flag_excecao_rv, source: Exceção RV, required: false}
+    - {name: flag_resgate_fundo, source: Resgate em fundo, required: false}
+    - {name: cod_xp_assessor, source: Código Assessor}
+    - {name: status, source: Status, required: false}
+silver_to_gold:
+  schema:
+  - {name: cod_xp_cliente, type: string, only_digits: true}
+  - {name: nome_cliente, type: string}
+  - {name: dt_contratacao, type: 'timestamp[ns]'}
+  - {name: taxa_contratacao, type: float64}
+  - {name: flag_excecao_rv, type: string}
+  - {name: flag_resgate_fundo, type: string}
+  - {name: cod_xp_assessor, type: string, only_digits: true}
+  - {name: status, type: string}
+  - {name: dt_ref, type: date64}
+  - {name: id_calendario_dt_ref, type: int32}
+redshift:
+  database: dw
+  schema: xp_inc
+  table: feebased_gerencial
+  load_mode: replace_partition

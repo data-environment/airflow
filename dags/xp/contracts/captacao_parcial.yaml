@@ -1,0 +1,50 @@
+pipeline: captacao_parcial
+description: 'XP captação parcial (TED): bronze → silver → gold → Redshift.'
+owner: dw
+tags:
+- captacao_parcial
+schedule: 3 23 * * 1-5
+retries: 1
+s3:
+  path: investsmart/xp_inc/captacao_parcial
+  file: captacao_parcial
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: csv, sep: ',', encoding: UTF-8}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    filter_rules:
+    - {column: Data, op: startswith, value: Filtros aplicados}
+    - {column: Data, op: startswith, value: Applied filters}
+    - {column: Data, op: startswith, value: Total}
+    - {column: Código assessor, op: regex, value: '^(?:nan|None|<NA>|\s*)$'}
+    columns:
+    - {name: dt_captacao, source: Data}
+    - {name: nucleo, source: Núcleo, required: false, min_length: 12, max_length: 30}
+    - {name: matriz, source: Nom matriz, required: false, min_length: 38, max_length: 38}
+    - {name: cod_xp_assessor, source: Código assessor, min_length: 4, max_length: 6}
+    - {name: cod_xp_cliente, source: Código conta, min_length: 2, max_length: 9}
+    - {name: tipo_cliente, source: Tipo Pessoa, required: false, min_length: 1, max_length: 12}
+    - {name: cod_instituicao_financeira, source: Código inst. financeira, required: false, min_length: 1, max_length: 5}
+    - {name: vlr_entrada, source: Entradas, type: decimal}
+    - {name: vlr_saida, source: Saídas, type: decimal}
+    - {name: vlr_captacao, source: Saldo, type: decimal, required: false}
+silver_to_gold:
+  schema:
+  - {name: dt_captacao, type: date64}
+  - {name: nucleo, type: string}
+  - {name: matriz, type: string}
+  - {name: cod_xp_assessor, type: string, only_digits: true}
+  - {name: cod_xp_cliente, type: string, only_digits: true}
+  - {name: tipo_cliente, type: string}
+  - {name: cod_instituicao_financeira, type: string}
+  - {name: vlr_entrada, type: float64}
+  - {name: vlr_saida, type: float64}
+  - {name: vlr_captacao, type: float64}
+  - {name: dt_ref, type: date64}
+  - {name: id_calendario_dt_ref, type: int32}
+redshift:
+  database: dw
+  schema: xp_inc
+  table: captacao_parcial
+  load_mode: replace_partition

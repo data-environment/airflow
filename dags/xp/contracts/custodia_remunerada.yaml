@@ -1,0 +1,45 @@
+pipeline: custodia_remunerada
+description: 'XP custódia remunerada: bronze → silver → gold → Redshift.'
+owner: dw
+tags:
+- custodia_remunerada
+schedule: 36 22 * * 1-5
+retries: 1
+s3:
+  path: investsmart/xp_inc/custodia_remunerada
+  file: custodia_remunerada
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    filter_rules:
+    - {column: Cod assessor, op: startswith, value: Filtros aplicados}
+    columns:
+    - {name: cod_xp_assessor, source: Cod assessor, min_length: 4, max_length: 6}
+    - {name: cod_xp_cliente, source: Cod conta, min_length: 3, max_length: 9}
+    - {name: matriz, source: Matriz, min_length: 2, max_length: 255}
+    - {name: status, source: Status, min_length: 2, max_length: 64}
+    - {name: vlr_custodia_total, source: Custódia Total, type: decimal}
+    - {name: vlr_custodia_remunerada, source: Custódia Remunerada, type: decimal}
+    - {name: vlr_custodia_doacao, source: Custódia em doação, type: decimal}
+    - {name: dt_assinatura, source: Data da Assinatura, required: false}
+    - {name: qtd_dias_assinatura, source: Dias desde Assinatura, type: decimal}
+silver_to_gold:
+  schema:
+  - {name: cod_xp_assessor, type: string, only_digits: true}
+  - {name: cod_xp_cliente, type: string, only_digits: true}
+  - {name: matriz, type: string}
+  - {name: status, type: string}
+  - {name: vlr_custodia_total, type: float64}
+  - {name: vlr_custodia_remunerada, type: float64}
+  - {name: vlr_custodia_doacao, type: float64}
+  - {name: dt_assinatura, type: date64}
+  - {name: qtd_dias_assinatura, type: int64}
+  - {name: dt_ref, type: date64}
+  - {name: id_calendario_dt_ref, type: int32}
+redshift:
+  database: dw
+  schema: xp_inc
+  table: custodia_remunerada
+  load_mode: replace_partition

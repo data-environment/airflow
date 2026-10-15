@@ -1,0 +1,59 @@
+pipeline: gastos_cartao
+description: 'XP gastos cartão: bronze → silver → gold → Redshift.'
+owner: dw
+tags:
+- gastos_cartao
+schedule: 39 22 * * 1-5
+retries: 1
+s3:
+  path: investsmart/xp_inc/gastos_cartao
+  file: gastos_cartao
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    filter_rules:
+    - {column: Cód.Conta, op: startswith, value: Filtros aplicados}
+    columns:
+    - {name: cod_xp_conta, source: Cód.Conta, min_length: 3, max_length: 8}
+    - {name: cod_xp_escritorio, source: Cód. Escritório, min_length: 4, max_length: 6}
+    - {name: escritorio, source: Escritório, required: false, min_length: 2, max_length: 255}
+    - {name: uso_conta, source: Uso_Conta, required: false, min_length: 2, max_length: 32}
+    - {name: status_corretora, source: Status Corretora, required: false, min_length: 2, max_length: 32}
+    - {name: elegivel_turbo_conta, source: Elegível Turbo Conta, required: false, min_length: 3, max_length: 3}
+    - {name: faixa_auc, source: Faixa Auc, required: false, min_length: 2, max_length: 64}
+    - {name: portabilidade, source: Portabilidade, required: false, min_length: 2, max_length: 64}
+    - {name: status_pgto_boleto, source: Status Pgto Boleto, required: false, min_length: 2, max_length: 32}
+    - {name: status_pgto_fatura, source: Status Pgto Fatura, required: false, min_length: 2, max_length: 32}
+    - {name: status_chave_pix, source: Status Chave Pix, required: false, min_length: 2, max_length: 32}
+    - {name: principalidade_conta, source: Principalidade Conta, required: false, min_length: 2, max_length: 32}
+    - {name: segmento, source: Segmento, required: false, min_length: 2, max_length: 32}
+    - {name: faixa_pagamento_m0, source: Faixa Pagamento M0, required: false, min_length: 2, max_length: 64}
+    - {name: faixa_pagamento_m1, source: Faixa Pagamento M-1, required: false, min_length: 2, max_length: 64}
+    - {name: faixa_pagamento_m2, source: Faixa Pagamento M-2, required: false, min_length: 2, max_length: 64}
+silver_to_gold:
+  schema:
+  - {name: cod_xp_conta, type: string, only_digits: true}
+  - {name: cod_xp_escritorio, type: string, only_digits: true}
+  - {name: escritorio, type: string}
+  - {name: uso_conta, type: string}
+  - {name: status_corretora, type: string}
+  - {name: elegivel_turbo_conta, type: string}
+  - {name: faixa_auc, type: string}
+  - {name: portabilidade, type: string}
+  - {name: status_pgto_boleto, type: string}
+  - {name: status_pgto_fatura, type: string}
+  - {name: status_chave_pix, type: string}
+  - {name: principalidade_conta, type: string}
+  - {name: segmento, type: string}
+  - {name: faixa_pagamento_m0, type: string}
+  - {name: faixa_pagamento_m1, type: string}
+  - {name: faixa_pagamento_m2, type: string}
+  - {name: dt_ref, type: date64}
+  - {name: id_calendario_dt_ref, type: int32}
+redshift:
+  database: dw
+  schema: xp_inc
+  table: gastos_cartao
+  load_mode: replace_partition

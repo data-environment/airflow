@@ -1,0 +1,56 @@
+pipeline: captacao
+description: 'XP captação: bronze → silver → gold → Redshift.'
+owner: dw
+tags:
+- captacao
+schedule: 0 23 * * 1-5
+retries: 1
+s3:
+  path: investsmart/xp_inc/captacao
+  file: captacao
+bronze_to_silver:
+  versions:
+  - from: 2025-01-01
+    origin: {type: csv, sep: ',', encoding: UTF-8}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    columns:
+    - {name: escritorio, source: Escritório, required: false, min_length: 0, max_length: 101}
+    - {name: dt_captacao, source: Data}
+    - {name: cod_xp_assessor, source: Assessor, min_length: 4, max_length: 5}
+    - {name: cod_xp_cliente, source: Cód_do_Cliente, min_length: 2, max_length: 9}
+    - {name: tipo_captacao, source: Tipo_de_Captação, min_length: 2, max_length: 36}
+    - {name: aux, source: Aux, pattern: '^[CD]$'}
+    - {name: vlr_captacao, source: Captação, type: decimal}
+    - {name: dt_atualizacao, source: Data_Atualização, required: false}
+    - {name: segmentacao_cliente, source: Segmentação Cliente, required: false}
+  - from: 2026-09-10
+    origin: {type: csv, sep: ',', encoding: UTF-8}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    columns:
+    - {name: escritorio, source: Escritório, min_length: 0, max_length: 101}
+    - {name: dt_captacao, source: Data}
+    - {name: cod_xp_assessor, source: Assessor, min_length: 4, max_length: 5}
+    - {name: cod_xp_cliente, source: Cód do Cliente, min_length: 2, max_length: 9}
+    - {name: tipo_captacao, source: Tipo de Captação, min_length: 2, max_length: 36}
+    - {name: aux, source: Aux, pattern: '^[CD]$'}
+    - {name: vlr_captacao, source: Captação, type: decimal}
+    - {name: dt_atualizacao, source: Data_Atualização, required: false}
+    - {name: segmentacao_cliente, source: Segmentação Cliente, min_length: 5, max_length: 50}
+silver_to_gold:
+  schema:
+  - {name: escritorio, type: string}
+  - {name: dt_captacao, type: date64}
+  - {name: cod_xp_assessor, type: string, only_digits: true}
+  - {name: cod_xp_cliente, type: string, only_digits: true}
+  - {name: tipo_captacao, type: string}
+  - {name: aux, type: string}
+  - {name: vlr_captacao, type: float64}
+  - {name: dt_atualizacao, type: date64}
+  - {name: segmentacao_cliente, type: string}
+  - {name: dt_ref, type: date64}
+  - {name: id_calendario_dt_ref, type: int32}
+redshift:
+  database: dw
+  schema: xp_inc
+  table: captacao
+  load_mode: replace_partition
