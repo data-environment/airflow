@@ -21,14 +21,22 @@ class SilverToGold:
         self.layer = layer or contract.layer()
         self.columns = contract.silver_to_gold.columns
 
-    def run(self, file_name: str, silver_key: str) -> dict:
+    def run(self, file_name: str, silver_keys: list[str]) -> dict:
+        """Lê e concatena os arquivos da silver da data (um por CNPJ/partição,
+        ou só um) e grava um único arquivo na gold."""
         from include.etl.file_types import Parquet, build_file_type
+        from include.etl.layer import relative_path
 
         settings, s3 = self.layer.settings, self.layer.s3_client
 
         version = self.contract.bronze_to_silver.version_for(file_name)
         reader = build_file_type(version.destination, s3)
-        silver = reader.get(settings.bucket_silver, silver_key)
+        frames = []
+        for key in silver_keys:
+            frame = reader.get(settings.bucket_silver, key)
+            logger.info(f"{relative_path(key)}: {len(frame)} linha(s) na silver")
+            frames.append(frame)
+        silver = pd.concat(frames, ignore_index=True)
         gold = self.transform(silver, file_name)
 
         prefix = self.layer.gold_prefix()

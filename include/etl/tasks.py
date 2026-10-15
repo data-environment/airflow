@@ -73,7 +73,7 @@ def compare_bronze_and_silver(bronze: list[dict], silver: list[dict]) -> list[di
 def compare_silver_and_gold(silver: list[dict], gold: list[dict]) -> list[dict]:
     from include.etl.layer_comparator import LayerComparator
 
-    return LayerComparator().between_layers("silver", silver, "gold", gold)
+    return LayerComparator().by_file_name("silver", silver, "gold", gold)
 
 
 @task
@@ -86,8 +86,9 @@ def compare_gold_and_redshift(gold: list[dict], redshift: list[dict]) -> list[di
 @task(map_index_template="{{ file_name }}")
 def etl_bronze_to_silver(contract: dict, record: dict) -> dict:
     from include.etl.etl_bronze_to_silver import BronzeToSilver
+    from include.etl.layer import relative_path
 
-    get_current_context()["file_name"] = record["FileName"]
+    get_current_context()["file_name"] = relative_path(record["Key"])
     return BronzeToSilver(_contract(contract)).run(record["FileName"], record["Key"])
 
 
@@ -96,7 +97,7 @@ def etl_silver_to_gold(contract: dict, record: dict) -> dict:
     from include.etl.etl_silver_to_gold import SilverToGold
 
     get_current_context()["file_name"] = record["FileName"]
-    return SilverToGold(_contract(contract)).run(record["FileName"], record["Key"])
+    return SilverToGold(_contract(contract)).run(record["FileName"], record["Keys"])
 
 
 @task(map_index_template="{{ file_name }}", max_active_tis_per_dagrun=1)

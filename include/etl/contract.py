@@ -22,8 +22,14 @@ class _Spec(BaseModel):
 
 
 class S3Spec(_Spec):
+    """Na bronze/silver:
+    `{path}/year=AAAA/[cnpj=<cnpj>/][<partição>/]{file}_AAAAMMDD.<ext>`.
+    `cnpj`: uma pasta por CNPJ. `partitioned`: subpastas de partição."""
+
     path: str
     file: str
+    cnpj: bool = False
+    partitioned: bool = False
 
 
 class FileSpec(BaseModel):
@@ -134,7 +140,12 @@ class Contract(_Spec):
     def layer(self) -> "Layer":
         from include.etl.layer import Layer
 
-        return Layer(self.s3.path, self.s3.file)
+        return Layer(
+            self.s3.path,
+            self.s3.file,
+            cnpj=self.s3.cnpj,
+            partitioned=self.s3.partitioned,
+        )
 
     def to_xcom(self) -> dict:
         """Formato serializável em JSON, para `partial(contract=...)`.

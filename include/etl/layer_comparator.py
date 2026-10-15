@@ -4,7 +4,7 @@ import pandas as pd
 from pandas import DataFrame
 
 from include.config import TIMEZONE
-from include.etl.layer import files_to_records, records_to_files
+from include.etl.layer import files_to_records, records_to_files, relative_path
 from include.etl.log import log_group
 
 logger = logging.getLogger(__name__)
@@ -16,14 +16,44 @@ class LayerComparator:
     ) -> list[dict]:
         """Arquivos de `source` sem correspondente em `target` (novos) ou
         modificados depois da versão que está em `target`, com o
-        `LastModified` do `source`."""
-        pending = self._pending_files(
-            records_to_files(source), records_to_files(target)
+        `LastModified` do `source`. Casa pelo caminho sem extensão: `target`
+        é gravado no mesmo diretório de `source` e, com CNPJ ou partição,
+        vários arquivos têm o mesmo `FileName`."""
+        source_files, target_files = (
+            records_to_files(records).assign(
+                Path=lambda df: df["Key"].map(relative_path),
+                Label=lambda df: df["Path"],
+            )
+            for records in (source, target)
         )
+        pending = self._pending_files(source_files, target_files, on="Path")
         self._log_pending_files(source_name, target_name, pending)
         return files_to_records(
             pending.rename(columns={"LastModified_x": "LastModified"})
         )
+
+    def by_file_name(
+        self, source_name: str, source: list[dict], target_name: str, target: list[dict]
+    ) -> list[dict]:
+        """Como `between_layers`, mas junta os arquivos de `source` com o mesmo
+        `FileName` (CNPJs/partições da mesma data) num registro só: `Keys` são
+        as chaves e o `LastModified` é o do arquivo mais recente. Assim uma
+        partição que chega depois reprocessa a data com todas."""
+        grouped = (
+            records_to_files(source)
+            .groupby("FileName", as_index=False)
+            .agg(
+                Keys=("Key", lambda keys: sorted(keys)),
+                LastModified=("LastModified", "max"),
+            )
+        )
+        grouped["Label"] = [
+            f"{name} ({len(keys)} arquivo(s))"
+            for name, keys in zip(grouped["FileName"], grouped["Keys"])
+        ]
+        pending = self._pending_files(grouped, records_to_files(target), on="FileName")
+        self._log_pending_files(source_name, target_name, pending)
+        return pending[["FileName", "Keys"]].to_dict("records")
 
     def with_redshift(self, gold: list[dict], loaded: list[dict]) -> list[dict]:
         """Arquivos da gold a carregar: `insert` (dt_ref ainda não está na
@@ -38,13 +68,10 @@ class LayerComparator:
         self._log_pending_loads(pending)
         return pending[["Key", "FileName", "tipo"]].to_dict("records")
 
-    def _pending_files(self, source: DataFrame, target: DataFrame) -> DataFrame:
-        merged = pd.merge(
-            source[["FileName", "Key", "LastModified", "ano"]],
-            target[["FileName", "LastModified"]],
-            on="FileName",
-            how="left",
-        )
+    def _pending_files(
+        self, source: DataFrame, target: DataFrame, on: str
+    ) -> DataFrame:
+        merged = pd.merge(source, target[[on, "LastModified"]], on=on, how="left")
         is_new = merged["LastModified_y"].isna()
         is_modified = merged["LastModified_x"] > merged["LastModified_y"]
         return merged[is_new | is_modified]
@@ -111,7 +138,7 @@ class LayerComparator:
             logger,
             f"Arquivos para processar ({len(pending)})",
             [
-                f"{row.FileName}  "
+                f"{row.Label}  "
                 + (
                     "novo"
                     if new

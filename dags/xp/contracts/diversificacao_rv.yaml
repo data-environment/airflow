@@ -1,0 +1,57 @@
+pipeline: diversificacao_rv
+description: 'XP diversificação RV: bronze (CNPJ e produto) → silver → gold → Redshift.'
+owner: dw
+tags:
+- diversificacao_rv
+schedule: 0 22 * * 1-5
+retries: 1
+s3:
+  path: investsmart/xp_inc/diversificacao_rv
+  file: diversificacao_rv
+  cnpj: true
+  partitioned: true
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    filter_rules:
+    - {column: Conta, op: startswith, value: Filtros aplicados}
+    columns:
+    - {name: cod_xp_cliente, source: Conta}
+    - {name: suitability, source: Suitability, required: false}
+    - {name: cod_xp_matriz, source: Cod Matriz, required: false}
+    - {name: cod_xp_assessor, source: Cod Assessor, required: false}
+    - {name: nome_matriz, source: Matriz, required: false}
+    - {name: cod_ativo, source: Ativo, required: false}
+    - {name: qtd_ativo, source: Qtde, type: decimal, required: false}
+    - {name: vlr_auc, source: AUC, type: decimal, required: false}
+    - {name: vlr_preco_medio, source: Preço Médio, type: decimal, required: false}
+    - {name: vlr_abertura, source: Val Abertura, type: decimal, required: false}
+    - {name: vlr_variacao, source: Variação, type: decimal, required: false}
+    - {name: produto, source: Produto, required: false}
+    - {name: setor, source: Setor, required: false}
+    - {name: subsetor, source: Subsetor, required: false}
+silver_to_gold:
+  schema:
+  - {name: cod_xp_cliente, type: string}
+  - {name: suitability, type: string}
+  - {name: cod_xp_matriz, type: string}
+  - {name: cod_xp_assessor, type: string, only_digits: true}
+  - {name: nome_matriz, type: string}
+  - {name: cod_ativo, type: string}
+  - {name: qtd_ativo, type: float64}
+  - {name: vlr_auc, type: float64}
+  - {name: vlr_preco_medio, type: float64}
+  - {name: vlr_abertura, type: float64}
+  - {name: vlr_variacao, type: float64}
+  - {name: produto, type: string}
+  - {name: setor, type: string}
+  - {name: subsetor, type: string}
+  - {name: dt_ref, type: date64}
+  - {name: id_calendario_dt_ref, type: int32}
+redshift:
+  database: dw
+  schema: xp_inc
+  table: diversificacao_rv
+  load_mode: replace_partition

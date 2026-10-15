@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -8,6 +9,12 @@ from include.config import EtlSettings
 from include.config import settings as default_settings
 
 FILE_COLUMNS = ["Key", "LastModified", "FileName", "ano"]
+
+
+def relative_path(key: str) -> str:
+    """Caminho após `year=AAAA/`, sem extensão (ex.: `trade_idea_20260810` ou
+    `cnpj=.../acao/diversificacao_rv_20260810`). Igual entre bronze e silver."""
+    return re.split(r"/year=\d{4}/", key, maxsplit=1)[-1].rsplit(".", 1)[0]
 
 
 def files_to_records(files: DataFrame) -> list[dict]:
@@ -30,6 +37,8 @@ def records_to_files(records: list[dict]) -> DataFrame:
 class Layer:
     path: str
     file: str
+    cnpj: bool = False
+    partitioned: bool = False
     settings: EtlSettings = field(default_factory=lambda: default_settings)
     s3_client: S3Client = field(default_factory=S3Client)
 
@@ -49,25 +58,6 @@ class Layer:
 
         return df_response
 
-    def _get_files_with_previous_year(self, prefix: str, bucket: str) -> DataFrame:
-        """
-        Retorna os arquivos do prefixo e, dentro do primeiro trimestre
-        (janeiro a março), também os do ano anterior.
-        """
-        if not self._is_within_first_quarter():
-            return self._get_files(prefix, bucket)
-
-        prefix_ano_anterior = prefix.replace(
-            f"year={self.settings.year}/", f"year={self.settings.year - 1}/"
-        )
-        return pd.concat(
-            [
-                self._get_files(prefix_ano_anterior, bucket),
-                self._get_files(prefix, bucket),
-            ],
-            ignore_index=True,
-        )
-
     def year_prefix(self, year: int | str | None = None) -> str:
         year = self.settings.year if year is None else year
         return f"{self.settings.environment}/{self.path}/year={year}"
@@ -77,17 +67,29 @@ class Layer:
 
     def file_prefixes(self) -> list[str]:
         """Prefixos pesquisados na bronze e na silver: o ano corrente e, no
-        primeiro trimestre, também o anterior."""
-        prefix = f"{self.year_prefix()}/{self.file}"
-        if not self._is_within_first_quarter():
-            return [prefix]
-        return [f"{self.year_prefix(self.settings.year - 1)}/{self.file}", prefix]
+        primeiro trimestre, também o anterior; um por CNPJ se `cnpj`. Se
+        `partitioned`, o prefixo para na pasta (a listagem desce nas
+        subpastas de partição)."""
+        years = [self.settings.year]
+        if self._is_within_first_quarter():
+            years.insert(0, self.settings.year - 1)
+        cnpjs = (
+            [f"/cnpj={self.settings.cnpj_is_1}", f"/cnpj={self.settings.cnpj_is_2}"]
+            if self.cnpj
+            else [""]
+        )
+        end = "/" if self.partitioned else f"/{self.file}"
+        return [
+            f"{self.year_prefix(year)}{cnpj}{end}" for year in years for cnpj in cnpjs
+        ]
 
     def _get_files_in(self, prefixes: list[str], bucket: str) -> DataFrame:
-        return pd.concat(
+        files = pd.concat(
             [self._get_files(prefix, bucket) for prefix in prefixes],
             ignore_index=True,
         )
+        is_file = files["FileName"].str.startswith(self.file)
+        return files[is_file].reset_index(drop=True)
 
     def get_bronze_files(self) -> DataFrame:
         return self._get_files_in(self.file_prefixes(), self.settings.bucket_bronze)
@@ -101,16 +103,3 @@ class Layer:
 
     def get_gold_files(self) -> DataFrame:
         return self._get_files_in(self.gold_file_prefixes(), self.settings.bucket_gold)
-
-    def get_cnpj_files(self) -> DataFrame:
-        frames = []
-        for cnpj in [self.settings.cnpj_is_1, self.settings.cnpj_is_2]:
-            prefix = (
-                f"{self.settings.environment}/{self.path}/cnpjs/{cnpj}/"
-                f"year={self.settings.year}/{self.file}"
-            )
-            frames.append(
-                self._get_files_with_previous_year(prefix, self.settings.bucket_bronze)
-            )
-        return pd.concat(frames, ignore_index=True)
-
