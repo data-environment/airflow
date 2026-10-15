@@ -2,14 +2,14 @@ import pandas as pd
 import pyarrow as pa
 from pandas import DataFrame, Series
 
-from include.etl.bronze_to_silver import file_date
+from include.etl.contract import GoldColumn, file_date
 
 DERIVED_COLUMNS = {"dt_ref", "id_calendario_dt_ref"}
 
 
-def arrow_schema(columns: list[dict]) -> pa.Schema:
+def arrow_schema(columns: list[GoldColumn]) -> pa.Schema:
     return pa.schema(
-        [(column["name"], pa.type_for_alias(column["type"])) for column in columns]
+        [(column.name, pa.type_for_alias(column.type)) for column in columns]
     )
 
 
@@ -26,10 +26,10 @@ def _to_datetime(values: Series) -> Series:
     return result
 
 
-def _convert(values: Series, column: dict) -> Series:
-    type_name = column["type"]
+def _convert(values: Series, column: GoldColumn) -> Series:
+    type_name = column.type
     if type_name == "string":
-        if column.get("only_digits"):
+        if column.only_digits:
             values = values.str.replace(r"\D", "", regex=True).replace("", None)
         return values
     if type_name.startswith(("float", "double")):
@@ -40,16 +40,15 @@ def _convert(values: Series, column: dict) -> Series:
         return _to_datetime(values)
     if type_name.startswith("date"):
         return _to_datetime(values).dt.date
-    raise ValueError(f"Tipo '{type_name}' da coluna '{column['name']}' não suportado.")
+    raise ValueError(f"Tipo '{type_name}' da coluna '{column.name}' não suportado.")
 
 
-def to_gold(silver: DataFrame, columns: list[dict], file_name: str) -> DataFrame:
+def to_gold(silver: DataFrame, columns: list[GoldColumn], file_name: str) -> DataFrame:
     """Converte a silver (lida com dtype=str) para as colunas e tipos da gold."""
     missing = [
-        column["name"]
+        column.name
         for column in columns
-        if column["name"] not in DERIVED_COLUMNS
-        and column["name"] not in silver.columns
+        if column.name not in DERIVED_COLUMNS and column.name not in silver.columns
     ]
     if missing:
         raise ValueError(
@@ -60,7 +59,7 @@ def to_gold(silver: DataFrame, columns: list[dict], file_name: str) -> DataFrame
     dt_ref = file_date(file_name)
     gold = DataFrame(index=silver.index)
     for column in columns:
-        name = column["name"]
+        name = column.name
         try:
             if name == "dt_ref":
                 gold[name] = dt_ref
@@ -70,6 +69,6 @@ def to_gold(silver: DataFrame, columns: list[dict], file_name: str) -> DataFrame
                 gold[name] = _convert(silver[name], column)
         except (ValueError, TypeError) as exc:
             raise ValueError(
-                f"Falha ao converter a coluna '{name}' para {column['type']}: {exc}"
+                f"Falha ao converter a coluna '{name}' para {column.type}: {exc}"
             ) from exc
     return gold.reset_index(drop=True)

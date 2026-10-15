@@ -6,21 +6,18 @@ from airflow.sdk import get_current_context, task
 if TYPE_CHECKING:
     from pandas import DataFrame
 
+    from include.etl.contract import Contract
+
 logger = logging.getLogger(__name__)
 
 MAX_LOGGED_FILES = 20
 
 
-def _layer(contract: dict):
-    from include.etl.layer import Layer
+def _contract(contract: dict) -> "Contract":
+    """O contrato chega às tasks serializado (`Contract.to_xcom`)."""
+    from include.etl.contract import Contract
 
-    return Layer(contract["s3"]["path"], contract["s3"]["file"])
-
-
-def _require(contract: dict, block: str) -> dict:
-    if not contract.get(block):
-        raise ValueError(f"O YAML do pipeline não tem o bloco `{block}`.")
-    return contract[block]
+    return Contract.model_validate(contract)
 
 
 def log_group(title: str, lines: list[str]) -> None:
@@ -95,7 +92,7 @@ def _compare_layers(
 def list_bronze_files(contract: dict) -> list[dict]:
     from include.etl.layer import files_to_records
 
-    layer = _layer(contract)
+    layer = _contract(contract).layer()
     files = layer.get_bronze_files()
     log_files("bronze", layer.settings.bucket_bronze, layer.file_prefixes(), files)
     return files_to_records(files)
@@ -105,7 +102,7 @@ def list_bronze_files(contract: dict) -> list[dict]:
 def list_silver_files(contract: dict) -> list[dict]:
     from include.etl.layer import files_to_records
 
-    layer = _layer(contract)
+    layer = _contract(contract).layer()
     files = layer.get_silver_files()
     log_files("silver", layer.settings.bucket_silver, layer.file_prefixes(), files)
     return files_to_records(files)
@@ -115,7 +112,7 @@ def list_silver_files(contract: dict) -> list[dict]:
 def list_gold_files(contract: dict) -> list[dict]:
     from include.etl.layer import files_to_records
 
-    layer = _layer(contract)
+    layer = _contract(contract).layer()
     files = layer.get_gold_files()
     log_files("gold", layer.settings.bucket_gold, layer.gold_file_prefixes(), files)
     return files_to_records(files)
@@ -130,9 +127,9 @@ def list_redshift_files(contract: dict) -> list[dict]:
     from include.aws.redshift.client import RedshiftClient
     from include.aws.redshift.connection import RedshiftConnection
 
-    redshift = _require(contract, "redshift")
-    table = f"{redshift['schema']}.{redshift['table']}"
-    client = RedshiftClient(RedshiftConnection(database=redshift["database"]))
+    redshift = _contract(contract).redshift
+    table = redshift.qualified_table
+    client = RedshiftClient(RedshiftConnection(database=redshift.database))
     loaded = client.get(
         f"SELECT dt_ref, MAX(dt_relatorio) AS dt_relatorio FROM {table} GROUP BY dt_ref"
     )
@@ -142,7 +139,7 @@ def list_redshift_files(contract: dict) -> list[dict]:
     else:
         logger.info(
             f"Redshift: {len(loaded)} dt_ref carregado(s) em "
-            f"{redshift['database']}.{table} "
+            f"{redshift.database}.{table} "
             f"(de {loaded['dt_ref'].min()} a {loaded['dt_ref'].max()})."
         )
     return [
@@ -209,36 +206,10 @@ def compare_gold_and_redshift(gold: list[dict], redshift: list[dict]) -> list[di
 @task(map_index_template="{{ file_name }}")
 def etl_bronze_to_silver(contract: dict, record: dict) -> dict:
     """Lê um arquivo da bronze, aplica o contrato e grava na silver."""
-    from include.etl.bronze_to_silver import apply_contract, select_version
-    from include.etl.file_types import build_file_type
+    from include.etl.bronze_to_silver import BronzeToSilver
 
     get_current_context()["file_name"] = record["FileName"]
-    bronze_to_silver = _require(contract, "bronze_to_silver")
-
-    layer = _layer(contract)
-    settings, s3 = layer.settings, layer.s3_client
-    file_name, bronze_key = record["FileName"], record["Key"]
-
-    version = select_version(bronze_to_silver["versions"], file_name)
-    logger.info(
-        f"{file_name}: contrato a partir de {version['from']} "
-        f"({len(version['columns'])} colunas, origem {version['origin']['type']})"
-    )
-
-    reader = build_file_type(version["origin"], s3, None)
-    bronze = reader.get(settings.bucket_bronze, bronze_key)
-    silver = apply_contract(bronze, version, version.get("footer_column"))
-
-    writer = build_file_type(version["destination"], s3, None)
-    prefix = bronze_key.rsplit("/", 1)[0]
-    writer.put(silver, settings.bucket_silver, prefix, file_name)
-    silver_key = f"{prefix}/{file_name}.{writer.extension}"
-
-    logger.info(
-        f"{file_name}: {len(bronze)} linha(s) lida(s) da bronze, "
-        f"{len(silver)} gravada(s) em {settings.bucket_silver}/{silver_key}"
-    )
-    return {"FileName": file_name, "Key": silver_key, "rows": len(silver)}
+    return BronzeToSilver(_contract(contract)).run(record["FileName"], record["Key"])
 
 
 @task(map_index_template="{{ file_name }}")
@@ -248,20 +219,19 @@ def etl_silver_to_gold(contract: dict, record: dict) -> dict:
 
     O formato da silver é o `destination` da versão do contrato
     bronze → silver que gerou o arquivo (escolhida pela data do nome)."""
-    from include.etl.bronze_to_silver import select_version
     from include.etl.file_types import Parquet, build_file_type
     from include.etl.silver_to_gold import arrow_schema, to_gold
 
     get_current_context()["file_name"] = record["FileName"]
-    columns = _require(contract, "silver_to_gold")["schema"]
-    bronze_to_silver = _require(contract, "bronze_to_silver")
+    contract = _contract(contract)
+    columns = contract.silver_to_gold.columns
 
-    layer = _layer(contract)
+    layer = contract.layer()
     settings, s3 = layer.settings, layer.s3_client
     file_name, silver_key = record["FileName"], record["Key"]
 
-    version = select_version(bronze_to_silver["versions"], file_name)
-    reader = build_file_type(version["destination"], s3, None)
+    version = contract.bronze_to_silver.version_for(file_name)
+    reader = build_file_type(version.destination, s3, None)
     silver = reader.get(settings.bucket_silver, silver_key)
     gold = to_gold(silver, columns, file_name)
 
@@ -289,24 +259,20 @@ def etl_gold_to_redshift(contract: dict, record: dict) -> dict:
     """
     from include.aws.redshift.client import RedshiftClient
     from include.aws.redshift.connection import RedshiftConnection
-    from include.etl.bronze_to_silver import file_date
+    from include.etl.contract import file_date
 
     get_current_context()["file_name"] = record["FileName"]
-    redshift = _require(contract, "redshift")
-    load_mode = redshift.get("load_mode")
-    if load_mode != "replace_partition":
-        raise ValueError(
-            f"load_mode '{load_mode}' não suportado (use replace_partition)."
-        )
+    contract = _contract(contract)
+    redshift = contract.redshift
 
-    layer = _layer(contract)
+    layer = contract.layer()
     settings = layer.settings
-    schema, table = redshift["schema"], redshift["table"]
+    schema, table = redshift.schema_name, redshift.table
     file_name, gold_key = record["FileName"], record["Key"]
     dt_ref = file_date(file_name)
     staging_table = f"stg_{table}_{dt_ref:%Y%m%d}"
 
-    client = RedshiftClient(RedshiftConnection(database=redshift["database"]))
+    client = RedshiftClient(RedshiftConnection(database=redshift.database))
     business_columns = client.get_business_columns(schema, table)
     staging_columns = client.build_staging_columns(
         layer.s3_client.get_parquet_schema(settings.bucket_gold, gold_key),
@@ -330,7 +296,7 @@ def etl_gold_to_redshift(contract: dict, record: dict) -> dict:
 
     logger.info(
         f"{file_name} ({record.get('tipo')}): {rows} linha(s) carregada(s) em "
-        f"{redshift['database']}.{schema}.{table} para dt_ref {dt_ref} "
+        f"{redshift.database}.{schema}.{table} para dt_ref {dt_ref} "
         f"({deleted} linha(s) anteriores substituída(s))."
     )
     return {

@@ -6,6 +6,7 @@ import pyarrow as pa
 from pandas import DataFrame
 
 from include.aws.s3.client import S3Client
+from include.etl.contract import FileSpec
 
 
 @dataclass
@@ -109,14 +110,8 @@ class XLS:
 FILE_TYPES = {"parquet": Parquet, "csv": CSV, "xlsx": XLSX, "html": HTML, "xls": XLS}
 
 
-def build_file_type(spec: dict, s3: S3Client, schema: pa.Schema | None):
-    """Instancia um formato a partir do dicionário do YAML."""
-    options = dict(spec)
-    file_type = options.pop("type")
-    if file_type not in FILE_TYPES:
-        raise ValueError(
-            f"Formato '{file_type}' não suportado. Use um de: {', '.join(FILE_TYPES)}"
-        )
-    if file_type == "parquet":
+def build_file_type(spec: FileSpec, s3: S3Client, schema: pa.Schema | None):
+    """Instancia um formato a partir do `FileSpec` do contrato."""
+    if spec.type == "parquet":
         return Parquet(s3, schema=schema)
-    return FILE_TYPES[file_type](s3, **options)
+    return FILE_TYPES[spec.type](s3, **spec.options)

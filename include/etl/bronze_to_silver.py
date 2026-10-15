@@ -1,7 +1,6 @@
-import re
-from datetime import date, datetime
+import logging
 from decimal import Decimal
-from typing import Annotated, Optional
+from typing import TYPE_CHECKING, Annotated
 
 import pandas as pd
 from pandas import DataFrame
@@ -13,126 +12,151 @@ from pydantic import (
     create_model,
 )
 
-FOOTER_MARKER = "Filtros aplicados"
-NULL_MARKERS = {"", "nan", "none", "null", "''"}
-MAX_ERRORS = 10
+from include.etl.contract import ColumnSpec, Contract, ContractVersion
+
+if TYPE_CHECKING:
+    from include.etl.layer import Layer
+
+logger = logging.getLogger(__name__)
 
 
-def file_date(file_name: str) -> date:
-    match = re.search(r"(\d{8})", file_name)
-    if not match:
-        raise ValueError(f"Arquivo '{file_name}' sem data YYYYMMDD no nome.")
-    return datetime.strptime(match.group(1), "%Y%m%d").date()
+class BronzeToSilver:
+    FOOTER_MARKER = "Filtros aplicados"
+    NULL_MARKERS = {"", "nan", "none", "null", "''"}
+    MAX_ERRORS = 10
 
+    def __init__(self, contract: Contract, layer: "Layer | None" = None):
+        self.contract = contract
+        self.layer = layer or contract.layer()
 
-def select_version(versions: list[dict], file_name: str) -> dict:
-    """Versão com o maior `from` que seja <= data do arquivo."""
-    dt = file_date(file_name)
-    eligible = [version for version in versions if version["from"] <= dt]
-    if not eligible:
-        raise ValueError(
-            f"Nenhuma versão do contrato vale para {file_name} ({dt}); "
-            f"versões a partir de: {sorted(v['from'] for v in versions)}."
-        )
-    return max(eligible, key=lambda version: version["from"])
+    def run(self, file_name: str, bronze_key: str) -> dict:
+        from include.etl.file_types import build_file_type
 
+        settings, s3 = self.layer.settings, self.layer.s3_client
 
-def _normalize_text(value) -> str | None:
-    if value is None or (isinstance(value, float) and pd.isna(value)):
-        return None
-    text = str(value).strip()
-    return None if text.lower() in NULL_MARKERS else text
-
-
-def _normalize_decimal(value) -> str | None:
-    """Aceita formato BR (1.234,56) e US (1,234.56 / 1234.56)."""
-    text = _normalize_text(value)
-    if text is None:
-        return None
-    if "," in text and "." in text:
-        if text.rfind(",") > text.rfind("."):
-            return text.replace(".", "").replace(",", ".")
-        return text.replace(",", "")
-    return text.replace(",", ".")
-
-
-def build_model(columns: list[dict]) -> type[BaseModel]:
-    fields = {}
-    for column in columns:
-        if column.get("type") == "decimal":
-            annotation = Decimal
-        else:
-            annotation = Annotated[
-                str,
-                StringConstraints(
-                    min_length=column.get("min_length"),
-                    max_length=column.get("max_length"),
-                    pattern=column.get("pattern"),
-                ),
-            ]
-        if column.get("required", True):
-            fields[column["name"]] = (annotation, ...)
-        else:
-            fields[column["name"]] = (Optional[annotation], None)
-    return create_model("SilverRow", __config__=ConfigDict(extra="ignore"), **fields)
-
-
-def apply_contract(
-    bronze: DataFrame, version: dict, footer_column: str | None = None
-) -> DataFrame:
-    """Aplica uma versão do contrato ao DataFrame lido da bronze (dtype=str)."""
-    columns = version["columns"]
-
-    df = bronze.dropna(how="all")
-    if footer_column and footer_column in df.columns:
-        df = df[~df[footer_column].astype(str).str.startswith(FOOTER_MARKER)]
-    if df.empty:
-        raise ValueError(
-            "O arquivo está vazio (depois de remover linhas vazias e rodapé)."
+        version = self.contract.bronze_to_silver.version_for(file_name)
+        logger.info(
+            f"{file_name}: contrato a partir de {version.valid_from} "
+            f"({len(version.columns)} colunas, origem {version.origin.type})"
         )
 
-    missing = [
-        column["source"]
-        for column in columns
-        if column.get("required", True) and column["source"] not in df.columns
-    ]
-    if missing:
-        raise ValueError(
-            f"Faltam colunas obrigatórias no arquivo: {missing}. "
-            f"Colunas encontradas: {list(df.columns)}"
-        )
+        reader = build_file_type(version.origin, s3)
+        bronze = reader.get(settings.bucket_bronze, bronze_key)
+        silver = self.transform(bronze, version)
 
-    model = build_model(columns)
-    rows, errors = [], []
-    for index, record in zip(df.index, df.to_dict("records")):
-        values = {
-            column["name"]: (
-                _normalize_decimal
-                if column.get("type") == "decimal"
-                else _normalize_text
-            )(record.get(column["source"]))
-            for column in columns
-        }
-        try:
-            rows.append(model(**values).model_dump())
-        except ValidationError as exc:
-            # Linha do Excel: índice 0 + cabeçalho na linha 1.
-            errors.extend(
-                f"linha {index + 2}, {error['loc'][0]}: {error['msg']} "
-                f"(valor: {str(error.get('input'))[:50]!r})"
-                for error in exc.errors()
+        writer = build_file_type(version.destination, s3)
+        prefix = bronze_key.rsplit("/", 1)[0]
+        writer.put(silver, settings.bucket_silver, prefix, file_name)
+        silver_key = f"{prefix}/{file_name}.{writer.extension}"
+
+        logger.info(
+            f"{file_name}: {len(bronze)} linha(s) lida(s) da bronze, "
+            f"{len(silver)} gravada(s) em {settings.bucket_silver}/{silver_key}"
+        )
+        return {"FileName": file_name, "Key": silver_key, "rows": len(silver)}
+
+    def transform(self, bronze: DataFrame, version: ContractVersion) -> DataFrame:
+        columns = version.columns
+        df = self._drop_empty_and_footer(bronze, version)
+        self._check_required_columns(df, columns)
+
+        model = self._build_model(columns)
+        rows, errors = [], []
+        for index, record in zip(df.index, df.to_dict("records")):
+            values = {
+                column.name: (
+                    self._normalize_decimal
+                    if column.type == "decimal"
+                    else self._normalize_text
+                )(record.get(column.source))
+                for column in columns
+            }
+            try:
+                rows.append(model(**values).model_dump())
+            except ValidationError as exc:
+                errors.extend(
+                    f"linha {index + 2}, {error['loc'][0]}: {error['msg']} "
+                    f"(valor: {str(error.get('input'))[:50]!r})"
+                    for error in exc.errors()
+                )
+
+        if errors:
+            more = (
+                f"\n... e mais {len(errors) - self.MAX_ERRORS}"
+                if len(errors) > self.MAX_ERRORS
+                else ""
+            )
+            raise ValueError(
+                f"{len(errors)} erro(s) de validação do contrato:\n"
+                + "\n".join(errors[: self.MAX_ERRORS])
+                + more
             )
 
-    if errors:
-        more = (
-            f"\n... e mais {len(errors) - MAX_ERRORS}"
-            if len(errors) > MAX_ERRORS
-            else ""
-        )
-        raise ValueError(
-            f"{len(errors)} erro(s) de validação do contrato:\n"
-            + "\n".join(errors[:MAX_ERRORS])
-            + more
+        return pd.DataFrame(rows, columns=[column.name for column in columns])
+
+    def _drop_empty_and_footer(
+        self, bronze: DataFrame, version: ContractVersion
+    ) -> DataFrame:
+        df = bronze.dropna(how="all")
+        footer_column = version.footer_column
+        if footer_column and footer_column in df.columns:
+            df = df[~df[footer_column].astype(str).str.startswith(self.FOOTER_MARKER)]
+        if df.empty:
+            raise ValueError(
+                "O arquivo está vazio (depois de remover linhas vazias e rodapé)."
+            )
+        return df
+
+    def _check_required_columns(self, df: DataFrame, columns: list[ColumnSpec]) -> None:
+        missing = [
+            column.source
+            for column in columns
+            if column.required and column.source not in df.columns
+        ]
+        if missing:
+            raise ValueError(
+                f"Faltam colunas obrigatórias no arquivo: {missing}. "
+                f"Colunas encontradas: {list(df.columns)}"
+            )
+
+    @staticmethod
+    def _build_model(columns: list[ColumnSpec]) -> type[BaseModel]:
+        fields = {}
+        for column in columns:
+            if column.type == "decimal":
+                annotation = Decimal
+            else:
+                annotation = Annotated[
+                    str,
+                    StringConstraints(
+                        min_length=column.min_length,
+                        max_length=column.max_length,
+                        pattern=column.pattern,
+                    ),
+                ]
+            if column.required:
+                fields[column.name] = (annotation, ...)
+            else:
+                fields[column.name] = annotation | None
+        return create_model(
+            "SilverRow", __config__=ConfigDict(extra="ignore"), **fields
         )
 
-    return pd.DataFrame(rows, columns=[column["name"] for column in columns])
+    @classmethod
+    def _normalize_text(cls, value) -> str | None:
+        if value is None or (isinstance(value, float) and pd.isna(value)):
+            return None
+        text = str(value).strip()
+        return None if text.lower() in cls.NULL_MARKERS else text
+
+    @classmethod
+    def _normalize_decimal(cls, value) -> str | None:
+        """Aceita formato BR (1.234,56) e US (1,234.56 / 1234.56)."""
+        text = cls._normalize_text(value)
+        if text is None:
+            return None
+        if "," in text and "." in text:
+            if text.rfind(",") > text.rfind("."):
+                return text.replace(".", "").replace(",", ".")
+            return text.replace(",", "")
+        return text.replace(",", ".")
