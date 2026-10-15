@@ -1,0 +1,50 @@
+pipeline: rentabilidade
+description: 'XP rentabilidade: bronze → silver → gold → Redshift.'
+owner: dw
+tags:
+- rentabilidade
+schedule: 15 22 * * 1-5
+retries: 1
+s3:
+  path: investsmart/xp_inc/rentabilidade
+  file: rentabilidade
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    filter_rules:
+    - {column: Cód Conta, op: startswith, value: Filtros aplicados}
+    columns:
+    - {name: ano_mes, source: Ano Mês}
+    - {name: cod_xp_assessor, source: Cód. Assessor, pattern: '^A[0-9]+$'}
+    - {name: cod_xp_cliente, source: Cód Conta, pattern: '^[0-9]+$'}
+    - {name: dh_calculo_rentabilidade, source: Data Cálculo Rentabilidade, required: false}
+    - {name: rent_bruta_mensal, source: Rent. Bruta Mensal, type: decimal}
+    - {name: rent_liquida_mensal, source: Rent. Líquida Mensal, type: decimal}
+    - {name: rent_relativa_bruta_mensal, source: Rent. Relativa Bruta Mensal, type: decimal, required: false}
+    - {name: rent_relativa_liquida_mensal, source: Rent. Relativa Líquida, type: decimal, required: false}
+    - {name: rent_bruta_anual, source: Rent. Bruta Anual, type: decimal, required: false}
+    - {name: rent_liquida_anual, source: Rent. Líquida Anual, type: decimal, required: false}
+    - {name: rent_relativa_bruta_anual, source: Rent. Relativa Bruta Anual, type: decimal, required: false}
+    - {name: rent_relativa_liquida_anual, source: Rent. Relativa Líquida Anual, type: decimal, required: false}
+silver_to_gold:
+  schema:
+  - {name: cod_xp_assessor, type: string, only_digits: true}
+  - {name: cod_xp_cliente, type: string}
+  - {name: dh_calculo_rentabilidade, type: 'timestamp[ns]'}
+  - {name: rent_bruta_mensal, type: float64}
+  - {name: rent_liquida_mensal, type: float64}
+  - {name: rent_relativa_bruta_mensal, type: float64}
+  - {name: rent_relativa_liquida_mensal, type: float64}
+  - {name: rent_bruta_anual, type: float64}
+  - {name: rent_liquida_anual, type: float64}
+  - {name: rent_relativa_bruta_anual, type: float64}
+  - {name: rent_relativa_liquida_anual, type: float64}
+  - {name: dt_ref, type: date64}
+  - {name: id_calendario_dt_ref, type: int32}
+redshift:
+  database: dw
+  schema: xp_inc
+  table: rentabilidade
+  load_mode: replace_partition

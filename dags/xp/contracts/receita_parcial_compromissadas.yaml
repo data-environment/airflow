@@ -1,0 +1,42 @@
+pipeline: receita_parcial_compromissadas
+description: 'XP receita parcial compromissadas: bronze (CNPJ) → silver → gold → Redshift.'
+owner: dw
+tags:
+- receita_parcial_compromissadas
+sensor_interval: 1800
+retries: 1
+s3:
+  path: investsmart/xp_inc/receita_parcial/receita_parcial_compromissadas
+  file: receita_parcial_compromissadas
+  cnpj: true
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    columns:
+    - {name: dt_operacao, source: Data Operação, required: false}
+    - {name: dt_vencimento, source: Data Vencimento, required: false}
+    - {name: prazo_dias, source: Prazo em Dias, type: decimal, required: false}
+    - {name: cod_assessor, source: Código Assessor, required: false, min_length: 4, max_length: 6, pattern: '^A[0-9]+$'}
+    - {name: cod_conta, source: Código Conta, required: false, min_length: 2, max_length: 9, pattern: '^[0-9]+$'}
+    - {name: posicao_media_acruada, source: Posição Média Acruada, type: decimal, required: false}
+    - {name: taxa_cliente, source: Taxa Cliente, required: false, min_length: 1, max_length: 25}
+    - {name: receita_acruada_a_dividir, source: Receita acruada a Dividir, type: decimal, required: false}
+silver_to_gold:
+  schema:
+  - {name: dt_operacao, type: date64}
+  - {name: dt_vencimento, type: date64}
+  - {name: prazo_dias, type: int64}
+  - {name: cod_assessor, type: string, only_digits: true}
+  - {name: cod_conta, type: string}
+  - {name: posicao_media_acruada, type: float64}
+  - {name: taxa_cliente, type: string}
+  - {name: receita_acruada_a_dividir, type: float64}
+  - {name: dt_ref, type: date64}
+  - {name: id_calendario_dt_ref, type: int32}
+redshift:
+  database: dw
+  schema: xp_inc
+  table: receita_parcial_compromissadas
+  load_mode: replace_partition

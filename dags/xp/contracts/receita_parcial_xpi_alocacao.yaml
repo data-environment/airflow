@@ -1,0 +1,70 @@
+pipeline: receita_parcial_xpi_alocacao
+description: 'XP receita parcial XPI alocação: bronze (CNPJ) → silver → gold → Redshift.'
+owner: dw
+tags:
+- receita_parcial_xpi_alocacao
+sensor_interval: 1800
+retries: 1
+s3:
+  path: investsmart/xp_inc/receita_parcial/receita_parcial_xpi_alocacao
+  file: receita_parcial_xpi_alocacao
+  cnpj: true
+bronze_to_silver:
+  versions:
+  - from: 2026-08-31
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    columns:
+    - {name: dt_operacao, source: Date, required: false}
+    - {name: ano_nome_mes, source: Ano e Nome Mês, required: false, min_length: 9, max_length: 14}
+    - {name: cod_conta_offshore_digital, source: Código da Conta Offshore Digital, required: false, min_length: 7, max_length: 8}
+    - {name: cod_xp_conta, source: Código da Conta Brasil, required: false, min_length: 1, max_length: 8, pattern: '^[0-9]+$'}
+    - {name: dt_abertura_conta_offshore_digital, source: Data de Abertura da Conta Offshore Digital, required: false}
+    - {name: cod_ativo, source: Código do Ativo, required: false, min_length: 1, max_length: 25}
+    - {name: nome_ativo, source: Nome do Ativo, required: false, min_length: 1, max_length: 255}
+    - {name: operacao_cleartrhough_ou_foreignfinder, source: 'Cleartrhough ou ForeignFinder?', required: false, min_length: 12, max_length: 14}
+    - {name: operacao_push_ou_self, source: 'Operação foi realizada via Push ou Self Service?', required: false, min_length: 4, max_length: 12}
+    - {name: nome_produto, source: Produto, required: false, min_length: 2, max_length: 25}
+    - {name: natureza_operacao, source: Natureza da Operação, required: false, min_length: 5, max_length: 6}
+    - {name: qtd_ativos, source: Quantidade de Ativos, type: decimal}
+    - {name: volume_financeiro_operado_transacionado, source: 'Volume Financeiro Operado - Transacionado ($)', required: false, min_length: 1, max_length: 25}
+    - {name: vlr_unitario_ativo, source: 'Valor Unitário do Ativo ($)', type: decimal, required: false}
+    - {name: vlr_receita_gerada, source: 'Valor da Receita Gerada ($)', type: decimal, required: false}
+    - {name: taxa_percentual_emissao_bond, source: Percentual da Taxa de Emissão do Bond, type: decimal, required: false}
+    - {name: taxa_percentual_yield_bond, source: Percentual da Taxa de Yield do Bond, type: decimal, required: false}
+    - {name: cod_xp_assessor, source: Código do Assessor, required: false, min_length: 4, max_length: 6, pattern: '^A[0-9]+$'}
+    - {name: nome_matriz, source: Nome da Matriz, required: false, min_length: 15, max_length: 50}
+    - {name: segmento, source: Segmento, required: false, min_length: 3, max_length: 25}
+    - {name: canal, source: Canal, required: false, min_length: 3, max_length: 25}
+    - {name: id_ordem_operacoes, source: Identificador Único da Ordem - Operações, required: false, min_length: 10, max_length: 36}
+silver_to_gold:
+  schema:
+  - {name: dt_operacao, type: date64}
+  - {name: ano_nome_mes, type: string}
+  - {name: cod_conta_offshore_digital, type: string}
+  - {name: cod_xp_conta, type: string}
+  - {name: dt_abertura_conta_offshore_digital, type: date64}
+  - {name: cod_ativo, type: string}
+  - {name: nome_ativo, type: string}
+  - {name: operacao_cleartrhough_ou_foreignfinder, type: string}
+  - {name: operacao_push_ou_self, type: string}
+  - {name: nome_produto, type: string}
+  - {name: natureza_operacao, type: string}
+  - {name: qtd_ativos, type: int64}
+  - {name: volume_financeiro_operado_transacionado, type: string}
+  - {name: vlr_unitario_ativo, type: float64}
+  - {name: vlr_receita_gerada, type: float64}
+  - {name: taxa_percentual_emissao_bond, type: float64}
+  - {name: taxa_percentual_yield_bond, type: float64}
+  - {name: cod_xp_assessor, type: string}
+  - {name: nome_matriz, type: string}
+  - {name: segmento, type: string}
+  - {name: canal, type: string}
+  - {name: id_ordem_operacoes, type: string}
+  - {name: dt_ref, type: date64}
+  - {name: id_calendario_dt_ref, type: int32}
+redshift:
+  database: dw
+  schema: xp_inc
+  table: receita_parcial_xpi_alocacao
+  load_mode: replace_partition

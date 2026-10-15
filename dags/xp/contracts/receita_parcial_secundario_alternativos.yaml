@@ -1,0 +1,56 @@
+pipeline: receita_parcial_secundario_alternativos
+description: 'XP receita parcial secundário alternativos: bronze (CNPJ) → silver → gold → Redshift.'
+owner: dw
+tags:
+- receita_parcial_secundario_alternativos
+sensor_interval: 1800
+retries: 1
+s3:
+  path: investsmart/xp_inc/receita_parcial/receita_parcial_secundario_alternativos
+  file: receita_parcial_secundario_alternativos
+  cnpj: true
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    columns:
+    - {name: dt_execucao, source: Data}
+    - {name: mes, source: MES, required: false, min_length: 5, max_length: 5}
+    - {name: ticker, source: Ticker, required: false, min_length: 2, max_length: 25}
+    - {name: ativo, source: Fundo, required: false, min_length: 2, max_length: 100}
+    - {name: lado, source: Side, required: false, min_length: 1, max_length: 1}
+    - {name: qtd, source: Qtd, type: decimal, required: false}
+    - {name: cod_xp_assessor, source: Assessor, required: false, min_length: 4, max_length: 8, pattern: '^A[0-9]+$'}
+    - {name: cliente, source: Cliente, required: false, min_length: 1, max_length: 9, pattern: '^[0-9]+$'}
+    - {name: escritorio, source: Escritório, required: false, min_length: 2, max_length: 50}
+    - {name: tipo_produto, source: Tipo do produto, required: false, min_length: 2, max_length: 25}
+    - {name: porcentagem_corretagem, source: Comissão, type: decimal, required: false}
+    - {name: vlr_financeiro, source: Valor, type: decimal, required: false}
+    - {name: vlr_comissao, source: Receita Estimada, type: decimal}
+    - {name: porcentagem_incentivo, source: Incentivo, type: decimal, required: false}
+    - {name: porcentagem_desagio, source: Deságio, type: decimal, required: false}
+silver_to_gold:
+  schema:
+  - {name: dt_execucao, type: date64}
+  - {name: mes, type: string}
+  - {name: ticker, type: string}
+  - {name: ativo, type: string}
+  - {name: lado, type: string}
+  - {name: qtd, type: int64}
+  - {name: cod_xp_assessor, type: string}
+  - {name: cliente, type: string}
+  - {name: escritorio, type: string}
+  - {name: tipo_produto, type: string}
+  - {name: porcentagem_corretagem, type: float64}
+  - {name: vlr_financeiro, type: float64}
+  - {name: vlr_comissao, type: float64}
+  - {name: porcentagem_incentivo, type: float64}
+  - {name: porcentagem_desagio, type: float64}
+  - {name: dt_ref, type: date64}
+  - {name: id_calendario_dt_ref, type: int32}
+redshift:
+  database: dw
+  schema: xp_inc
+  table: receita_parcial_secundario_alternativos
+  load_mode: replace_partition

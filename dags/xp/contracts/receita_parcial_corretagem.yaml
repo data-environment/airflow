@@ -1,0 +1,58 @@
+pipeline: receita_parcial_corretagem
+description: 'XP receita parcial corretagem: bronze (CNPJ) → silver → gold → Redshift.'
+owner: dw
+tags:
+- receita_parcial_corretagem
+sensor_interval: 1800
+retries: 1
+s3:
+  path: investsmart/xp_inc/receita_parcial/receita_parcial_corretagem
+  file: receita_parcial_corretagem
+  cnpj: true
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    filter_rules:
+    - {column: Conta, op: startswith, value: Filtros aplicados}
+    - {column: Conta, op: startswith, value: Applied filters}
+    - {column: Conta, op: startswith, value: Total}
+    columns:
+    - {name: dt_corretagem, source: DAT_DATA, required: false}
+    - {name: cod_xp_cliente, source: Conta, min_length: 2, max_length: 9, pattern: '^[0-9]+$'}
+    - {name: suitability, source: Suitability, required: false, min_length: 8, max_length: 13}
+    - {name: cod_xp_assessor, source: Cod Assessor, required: false, min_length: 4, max_length: 6, pattern: '^A[0-9]+$'}
+    - {name: matriz, source: Matriz, required: false, min_length: 15, max_length: 51}
+    - {name: ativo, source: Ativo, required: false, min_length: 3, max_length: 29}
+    - {name: qtd_corretagem, source: Qtd. Ativo, type: decimal}
+    - {name: vlr_corretagem, source: Corretagem, type: decimal, required: false}
+    - {name: vlr_vol_negociado, source: Volume FInanceiro, type: decimal, required: false}
+    - {name: produto, source: Produto, required: false, min_length: 3, max_length: 25}
+    - {name: canal, source: Canal Origem da Ordem, required: false, min_length: 3, max_length: 18}
+    - {name: tipo_corretagem, source: Tipo Corretagem, required: false, min_length: 1, max_length: 12}
+    - {name: mercado, source: Mercado, required: false, min_length: 3, max_length: 3}
+    - {name: lado, source: Lado, required: false, min_length: 5, max_length: 6}
+silver_to_gold:
+  schema:
+  - {name: cod_xp_cliente, type: string, only_digits: true}
+  - {name: suitability, type: string}
+  - {name: cod_xp_assessor, type: string}
+  - {name: matriz, type: string}
+  - {name: ativo, type: string}
+  - {name: qtd_corretagem, type: int64}
+  - {name: vlr_corretagem, type: float64}
+  - {name: vlr_vol_negociado, type: float64}
+  - {name: produto, type: string}
+  - {name: canal, type: string}
+  - {name: tipo_corretagem, type: string}
+  - {name: mercado, type: string}
+  - {name: lado, type: string}
+  - {name: dt_corretagem, type: date64}
+  - {name: dt_ref, type: date64}
+  - {name: id_calendario_dt_ref, type: int32}
+redshift:
+  database: dw
+  schema: xp_inc
+  table: receita_parcial_corretagem
+  load_mode: replace_partition

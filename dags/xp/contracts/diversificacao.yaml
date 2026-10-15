@@ -1,0 +1,50 @@
+pipeline: diversificacao
+description: 'XP diversificação: bronze → silver → gold → Redshift.'
+owner: dw
+tags:
+- diversificacao
+sensor_interval: 612
+retries: 1
+s3:
+  path: investsmart/xp_inc/diversificacao
+  file: diversificacao
+bronze_to_silver:
+  versions:
+  - from: 2027-01-01
+    origin: {type: csv, sep: ',', encoding: UTF-8}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    columns:
+    - {name: dt_ref, source: Data}
+    - {name: dt_vencimento, source: Data de Vencimento, required: false}
+    - {name: cod_xp_assessor, source: Assessor, min_length: 4, max_length: 5}
+    - {name: cod_xp_cliente, source: Cliente, min_length: 2, max_length: 9}
+    - {name: produto, source: Produto, min_length: 3, max_length: 400}
+    - {name: sub_produto, source: Sub Produto, required: false, min_length: 2, max_length: 400}
+    - {name: cnpj_fundo, source: CNPJ Fundo, min_length: 1, max_length: 25}
+    - {name: ativo, source: Ativo, required: false, min_length: 2, max_length: 400}
+    - {name: emissor, source: Emissor, required: false, min_length: 1, max_length: 400}
+    - {name: vlr_quantidade, source: Quantidade, type: decimal}
+    - {name: vlr_net, source: NET, type: decimal}
+silver_to_gold:
+  schema:
+  - {name: dt_ref, type: date64}
+  - {name: dt_vencimento, type: date64}
+  - {name: cod_xp_assessor, type: string}
+  - {name: cod_xp_cliente, type: string}
+  - {name: produto, type: string}
+  - {name: sub_produto, type: string}
+  - {name: cnpj_fundo, type: string}
+  - {name: ativo, type: string}
+  - {name: emissor, type: string}
+  - {name: vlr_quantidade, type: float64}
+  - {name: vlr_net, type: float64}
+  - {name: id_calendario_dt_ref, type: int32}
+redshift:
+  database: dw
+  schema: xp_inc
+  table: diversificacao
+  load_mode: replace_partition
+quality:
+- {check: history_range, name: pl, metric: SUM(vlr_net)}
+- {check: history_range, name: clientes, metric: COUNT(DISTINCT cod_xp_cliente)}
+- {check: history_range, name: assessores, metric: COUNT(DISTINCT cod_xp_assessor)}

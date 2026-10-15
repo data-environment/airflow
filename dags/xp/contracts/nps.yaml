@@ -1,0 +1,75 @@
+pipeline: nps
+description: 'XP NPS: bronze (CNPJ) → silver → gold → Redshift.'
+owner: dw
+tags:
+- nps
+sensor_interval: 1800
+retries: 1
+s3:
+  path: investsmart/xp_inc/nps
+  file: nps
+  cnpj: true
+bronze_to_silver:
+  versions:
+  - from: 2026-01-01
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    columns:
+    - {name: email_cliente, source: 'Email Address [Funnel data for Default Directory]', required: false, min_length: 1, max_length: 255}
+    - {name: nome_cliente, source: 'First Name [Funnel data for Default Directory]', required: false, min_length: 1, max_length: 255}
+    - {name: sobrenome_cliente, source: 'Last Name [Funnel data for Default Directory]', required: false, min_length: 1, max_length: 255}
+    - {name: dt_envio, source: 'Record Date [Funnel data for Default Directory] (-03:00 GMT)', required: false}
+    - {name: record_id, source: '_recordId [Funnel data for Default Directory]', min_length: 32, max_length: 100}
+    - {name: response_id, source: 'Response ID [Funnel data for Default Directory]', required: false, min_length: 17, max_length: 100}
+    - {name: tipo_pesquisa, source: 'pesquisa [Default Directory contacts]', min_length: 1, max_length: 80}
+    - {name: faixa_net_m, source: 'faixa_net_geral [Default Directory contacts]', required: false, min_length: 1, max_length: 40}
+    - {name: cod_xp_escritorio, source: 'cod_escritorio [Default Directory contacts]', min_length: 4, max_length: 4}
+    - {name: cod_xp_assessor, source: 'cod_assessor [Default Directory contacts]', min_length: 5, max_length: 6}
+    - {name: cod_xp_cliente, source: 'cod_conta [Default Directory contacts]', min_length: 2, max_length: 9}
+    - {name: nota_xp_onboarding, source: 'De 0 a 10, como você recomendaria sua primeira experiência com a XP a um amigo ou familiar? [🟢 Jornada 3.2 - NPS Onboarding - XP]', type: decimal, required: false}
+    - {name: nota_xp_aniversario, source: 'Q8 - De 0 a 10, como você recomendaria a XP Investimentos a um amigo ou familiar? [🟢 Jornada 2.1 - Aniversário XP]', type: decimal, required: false}
+    - {name: nota_assessor, source: "Q1 - De 0 a 10, como você recomendaria o seu assessor de investimentos a um amigo ou familiar. \n\n\n\nEssa nota é sobre a sua assessoria: [Field-nome_assessor]. [🟢 Jornada 2.1 - Aniversário XP]", type: decimal, required: false}
+    - {name: comentario_melhoria_aniversario, source: 'Q3 - O que poderia ser melhorado? [🟢 Jornada 2.1 - Aniversário XP]', required: false, min_length: 1, max_length: 4000}
+    - {name: comentario_melhoria_onboarding, source: 'Deixe aqui seu comentário, sugestão de melhoria ou elogio. [🟢 Jornada 3.2 - NPS Onboarding - XP]', required: false, min_length: 1, max_length: 4000}
+    - {name: comentario_nps_aniversario_assessor, source: 'Q5 - Por favor, nos detalhe mais os motivos da sua nota para o seu assessor. [🟢 Jornada 2.1 - Aniversário XP]', required: false, min_length: 1, max_length: 4000}
+    - {name: comentario_nps_aniversario_xp, source: 'Q13 - Por favor, nos detalhe mais os motivos da sua nota para a XP. [🟢 Jornada 2.1 - Aniversário XP]', required: false, min_length: 1, max_length: 4000}
+    - {name: comentario_detrator_nps_aniversario_xp, source: 'Q9 - Por qual motivo você não recomendaria a XP Investimentos? [🟢 Jornada 2.1 - Aniversário XP]', required: false, min_length: 1, max_length: 4000}
+    - {name: comentario_promotor_nps_aniversario_xp, source: 'Q11 - Por qual motivo você recomendaria a XP Investimentos [🟢 Jornada 2.1 - Aniversário XP]', required: false, min_length: 1, max_length: 4000}
+    - {name: comentario_detrator_nps_aniversario_assessor, source: 'Q2 - Por qual motivo você não recomendaria seu assessor de investimentos? [🟢 Jornada 2.1 - Aniversário XP]', required: false, min_length: 1, max_length: 4000}
+    - {name: comentario_promotor_nps_aniversario_xp_assessor, source: 'Q4 - Por qual motivo você recomendaria seu assessor de investimentos? [🟢 Jornada 2.1 - Aniversário XP]', required: false, min_length: 1, max_length: 4000}
+    - {name: comentario_promotor_nps_onboarding_xp, source: 'Por qual motivo você recomendaria a XP? [🟢 Jornada 3.2 - NPS Onboarding - XP]', required: false, min_length: 1, max_length: 4000}
+    - {name: comentario_detrator_nps_onboarding_xp, source: 'Por qual motivo você não recomendaria a XP? [🟢 Jornada 3.2 - NPS Onboarding - XP]', required: false, min_length: 1, max_length: 4000}
+    - {name: nome_indicacao_aniversario, source: 'Q7_1 - Nome [🟢 Jornada 2.1 - Aniversário XP]', required: false, min_length: 1, max_length: 255}
+    - {name: telefone_indicacao_aniversario, source: 'Q7_2 - Telefone [🟢 Jornada 2.1 - Aniversário XP]', required: false, min_length: 1, max_length: 100}
+    - {name: email_indicacao_aniversario, source: 'Q7_3 - E-mail [🟢 Jornada 2.1 - Aniversário XP]', required: false, min_length: 1, max_length: 255}
+    - {name: indicaria_assessor_aniversario, source: 'Q6 - Você gostaria de indicar o seu assessor da XP Investimentos a um amigo ou familiar? [🟢 Jornada 2.1 - Aniversário XP]', required: false, min_length: 3, max_length: 3}
+    - {name: dt_resposta, source: 'Survey Finished Time [Funnel data for Default Directory] (-03:00 GMT)', required: false}
+silver_to_gold:
+  schema:
+  - {name: email_cliente, type: string}
+  - {name: nome_cliente, type: string}
+  - {name: record_id, type: string}
+  - {name: response_id, type: string}
+  - {name: tipo_pesquisa, type: string}
+  - {name: faixa_net_m, type: string}
+  - {name: cod_xp_escritorio, type: string}
+  - {name: cod_xp_assessor, type: string, only_digits: true}
+  - {name: cod_xp_cliente, type: string}
+  - {name: nota_assessor, type: int32}
+  - {name: comentario_nps_aniversario_assessor, type: string}
+  - {name: comentario_nps_aniversario_xp, type: string}
+  - {name: comentario_detrator_nps_aniversario_assessor, type: string}
+  - {name: comentario_promotor_nps_aniversario_xp_assessor, type: string}
+  - {name: nome_indicacao_aniversario, type: string}
+  - {name: telefone_indicacao_aniversario, type: string}
+  - {name: email_indicacao_aniversario, type: string}
+  - {name: indicaria_assessor_aniversario, type: string}
+  - {name: dt_envio, type: 'timestamp[ns]'}
+  - {name: dt_resposta, type: 'timestamp[ns]'}
+  - {name: dt_ref, type: date64}
+  - {name: id_calendario_dt_ref, type: int32}
+redshift:
+  database: dw
+  schema: xp_inc
+  table: nps
+  load_mode: replace_partition

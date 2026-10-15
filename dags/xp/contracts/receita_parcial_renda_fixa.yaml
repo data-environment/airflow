@@ -1,0 +1,63 @@
+pipeline: receita_parcial_renda_fixa
+description: 'XP receita parcial renda fixa: bronze (CNPJ) → silver → gold → Redshift.'
+owner: dw
+tags:
+- receita_parcial_renda_fixa
+sensor_interval: 1800
+retries: 1
+s3:
+  path: investsmart/xp_inc/receita_parcial/receita_parcial_renda_fixa
+  file: receita_parcial_renda_fixa
+  cnpj: true
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    filter_rules:
+    - {column: Data, op: regex, value: '(?i)Total'}
+    - {column: Data, op: regex, value: '(?i)Filtros aplicados:'}
+    columns:
+    - {name: dt_operacao, source: Data, required: false}
+    - {name: cod_xp_assessor, source: Cód. assessor, min_length: 4, max_length: 6, pattern: '^A[0-9]+$'}
+    - {name: cod_xp_cliente, source: Cód. conta, required: false, min_length: 2, max_length: 9, pattern: '^[0-9]+$'}
+    - {name: classificacao_ativo_n3, source: Tipo ativo, required: false, min_length: 2, max_length: 50}
+    - {name: produto_n3, source: Produto N3, required: false, max_length: 25}
+    - {name: ticker, source: Ticker, required: false, min_length: 2, max_length: 25}
+    - {name: nome_ativo, source: Nome papel, required: false, min_length: 2, max_length: 100}
+    - {name: indexador, source: Indexador, required: false, min_length: 2, max_length: 25}
+    - {name: dt_vencimento, source: Vencimento, required: false}
+    - {name: tipo_operacao, source: Tipo operação, required: false, min_length: 7, max_length: 10}
+    - {name: volume, source: Quantidade, type: decimal}
+    - {name: vlr_financeiro_transacionado, source: Volume, type: decimal, required: false}
+    - {name: vlr_receita, source: Receita a dividir, type: decimal, required: false}
+    - {name: pu_cliente, source: PU Cliente, type: decimal, required: false}
+    - {name: pu_tmr, source: PU TMR, type: decimal, required: false}
+    - {name: taxa_cliente, source: Taxa Cliente, type: decimal, required: false}
+    - {name: taxa_tmr, source: Taxa TMR, type: decimal, required: false}
+silver_to_gold:
+  schema:
+  - {name: dt_operacao, type: date64}
+  - {name: cod_xp_assessor, type: string}
+  - {name: cod_xp_cliente, type: string}
+  - {name: classificacao_ativo_n3, type: string}
+  - {name: produto_n3, type: string}
+  - {name: ticker, type: string}
+  - {name: nome_ativo, type: string}
+  - {name: indexador, type: string}
+  - {name: dt_vencimento, type: date64}
+  - {name: tipo_operacao, type: string}
+  - {name: volume, type: int32}
+  - {name: vlr_financeiro_transacionado, type: float64}
+  - {name: vlr_receita, type: float64}
+  - {name: pu_cliente, type: float64}
+  - {name: pu_tmr, type: float64}
+  - {name: taxa_cliente, type: float64}
+  - {name: taxa_tmr, type: float64}
+  - {name: dt_ref, type: date64}
+  - {name: id_calendario_dt_ref, type: int32}
+redshift:
+  database: dw
+  schema: xp_inc
+  table: receita_parcial_renda_fixa
+  load_mode: replace_partition

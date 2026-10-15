@@ -1,0 +1,56 @@
+pipeline: receita_parcial_coe
+description: 'XP receita parcial COE: bronze (CNPJ) → silver → gold → Redshift.'
+owner: dw
+tags:
+- receita_parcial_coe
+sensor_interval: 1800
+retries: 1
+s3:
+  path: investsmart/xp_inc/receita_parcial/receita_parcial_coe
+  file: receita_parcial_coe
+  cnpj: true
+bronze_to_silver:
+  versions:
+  - from: 2026-08-10
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    filter_rules:
+    - {column: Data operação, op: startswith, value: Filtros aplicados}
+    columns:
+    - {name: cod_xp_cliente, source: Conta, min_length: 2, max_length: 9, pattern: '^[0-9]+$'}
+    - {name: cod_xp_assessor, source: Assessor, min_length: 4, max_length: 6, pattern: '^A[0-9]+$'}
+    - {name: volume, source: Qtd negociado, type: decimal}
+    - {name: vlr_receita, source: Receita AAI, type: decimal, required: false}
+    - {name: status, source: Status ordem, required: false, min_length: 2, max_length: 255}
+    - {name: ativo, source: Ativo, required: false, min_length: 2, max_length: 255}
+    - {name: segmento, source: Segmento, required: false, min_length: 3, max_length: 255}
+    - {name: tipo_operacao, source: Tipo operação, required: false, min_length: 7, max_length: 10}
+    - {name: dt_operacao, source: Data operação, required: false}
+    - {name: dt_fim_oferta, source: Data Fim Oferta, required: false}
+    - {name: dt_liquidacao, source: Data Liquidação, required: false}
+    - {name: dt_vencimento, source: Data Vencimento, required: false}
+    - {name: id_ordem, source: ID ordem, required: false, min_length: 7, max_length: 7, pattern: '^[0-9]+$'}
+    - {name: vlr_financeiro, source: Valor Financeiro, type: decimal, required: false}
+silver_to_gold:
+  schema:
+  - {name: cod_xp_cliente, type: string}
+  - {name: cod_xp_assessor, type: string}
+  - {name: volume, type: int32}
+  - {name: vlr_receita, type: float64}
+  - {name: status, type: string}
+  - {name: ativo, type: string}
+  - {name: segmento, type: string}
+  - {name: tipo_operacao, type: string}
+  - {name: dt_operacao, type: date64}
+  - {name: dt_fim_oferta, type: date64}
+  - {name: dt_liquidacao, type: date64}
+  - {name: dt_vencimento, type: date64}
+  - {name: id_ordem, type: string}
+  - {name: vlr_financeiro, type: float64}
+  - {name: dt_ref, type: date64}
+  - {name: id_calendario_dt_ref, type: int32}
+redshift:
+  database: dw
+  schema: xp_inc
+  table: receita_parcial_coe
+  load_mode: replace_partition

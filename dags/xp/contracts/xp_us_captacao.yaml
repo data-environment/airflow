@@ -1,0 +1,55 @@
+pipeline: xp_us_captacao
+description: 'XP US captação: bronze (CNPJ) → silver → gold → Redshift.'
+owner: dw
+tags:
+- xp_us_captacao
+schedule: 30 22 * * 1-5
+retries: 1
+s3:
+  path: investsmart/xp_inc/xp_us_captacao
+  file: xp_us_captacao
+  cnpj: true
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: csv, sep: ',', encoding: UTF-8-SIG}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    columns:
+    - {name: dt_operacao, source: Date, required: false}
+    - {name: dt_competencia, source: Ano e Nome Mês, required: false}
+    - {name: cod_xp_us_cliente, source: Código da Conta Offshore PWM, min_length: 8, max_length: 9}
+    - {name: cod_xp_cliente, source: Código da Conta Brasil, required: false, min_length: 2, max_length: 9, pattern: '^[0-9]+$'}
+    - {name: fluxo_origem_captacao, source: Fluxo de Origem da Captação, required: false, min_length: 4, max_length: 32}
+    - {name: descricao_tipo_operacao_nivel_1, source: Tipo de Operação, required: false, min_length: 2, max_length: 256}
+    - {name: vlr_vol_financeiro_dolar, source: Volume Financeiro Movimentado ($), type: decimal, required: false}
+    - {name: descricao_tipo_operacao_nivel_2, source: Sub Tipo de Operação, required: false, min_length: 2, max_length: 256}
+    - {name: descricao_movimentacao, source: Descrição da Operação, required: false, min_length: 2, max_length: 301}
+    - {name: id_transacao, source: Identificador Único da Ordem - Movimentações, required: false, min_length: 2, max_length: 236}
+    - {name: nome_banqueiro_us, source: Banqueiro US, required: false, min_length: 2, max_length: 256}
+    - {name: cod_xp_assessor, source: Código do Assessor, required: false, min_length: 4, max_length: 6, pattern: '^A[0-9]+$'}
+    - {name: nome_matriz, source: Nome da Matriz, required: false, min_length: 2, max_length: 46}
+    - {name: segmento, source: Segmento, required: false, min_length: 3, max_length: 16}
+    - {name: canal, source: Canal, required: false, min_length: 3, max_length: 11}
+silver_to_gold:
+  schema:
+  - {name: dt_operacao, type: 'timestamp[ns]'}
+  - {name: cod_xp_us_cliente, type: string}
+  - {name: cod_xp_cliente, type: string, only_digits: true}
+  - {name: nome_banqueiro_us, type: string}
+  - {name: cod_xp_assessor, type: string, only_digits: true}
+  - {name: descricao_tipo_operacao_nivel_1, type: string}
+  - {name: descricao_tipo_operacao_nivel_2, type: string}
+  - {name: vlr_vol_financeiro_dolar, type: float64}
+  - {name: descricao_movimentacao, type: string}
+  - {name: id_transacao, type: string}
+  - {name: nome_matriz, type: string}
+  - {name: segmento, type: string}
+  - {name: canal, type: string}
+  - {name: fluxo_origem_captacao, type: string}
+  - {name: dt_ref, type: date64}
+  - {name: id_calendario_dt_ref, type: int32}
+redshift:
+  database: dw
+  schema: xp_inc
+  table: xp_us_captacao
+  load_mode: replace_partition

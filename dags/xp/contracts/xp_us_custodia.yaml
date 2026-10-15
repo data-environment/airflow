@@ -1,0 +1,65 @@
+pipeline: xp_us_custodia
+description: 'XP US custódia: bronze (CNPJ) → silver → gold → Redshift.'
+owner: dw
+tags:
+- xp_us_custodia
+schedule: 21 22 * * 1-5
+retries: 1
+s3:
+  path: investsmart/xp_inc/xp_us_custodia
+  file: xp_us_custodia
+  cnpj: true
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: csv, sep: ',', encoding: UTF-8}
+    destination: {type: csv, sep: ;, encoding: UTF-8}
+    columns:
+    - {name: dt_custodia, source: Data, required: false}
+    - {name: cod_xp_us_cliente, source: Código da Conta Offshore PWM, min_length: 8, max_length: 9}
+    - {name: cod_xp_cliente, source: Código da Conta Brasil, required: false, min_length: 2, max_length: 9, pattern: '^[0-9]+$'}
+    - {name: vlr_auc_dolar, source: Custódia Offshore PWM ($), type: decimal, required: false}
+    - {name: produto, source: Produto, required: false, min_length: 1, max_length: 100}
+    - {name: sub_produto, source: Sub Produto, required: false, min_length: 1, max_length: 36}
+    - {name: cod_ativo, source: Código do Ativo, required: false, min_length: 1, max_length: 11}
+    - {name: nome_ativo, source: Nome do Ativo, required: false, min_length: 3, max_length: 256}
+    - {name: qtd_ativo, source: Quantidade de Ativos, type: decimal, required: false}
+    - {name: dt_vencimento, source: Data de Vencimento do Título, required: false}
+    - {name: nome_gestor_fundo, source: Nome do Gestor do Fundo, required: false, min_length: 2, max_length: 100}
+    - {name: cusip, source: CUSIP, required: false, min_length: 2, max_length: 13}
+    - {name: isin, source: ISIN, required: false, min_length: 1, max_length: 17}
+    - {name: nome_banqueiro_us, source: Banqueiro US, required: false, min_length: 2, max_length: 256}
+    - {name: cod_xp_assessor, source: Código do Assessor, min_length: 4, max_length: 6, pattern: '^A[0-9]+$'}
+    - {name: nome_matriz, source: Nome da Matriz, required: false, min_length: 2, max_length: 46}
+    - {name: segmento, source: Segmento, required: false, min_length: 3, max_length: 16}
+    - {name: canal, source: Canal, required: false, min_length: 3, max_length: 11}
+silver_to_gold:
+  schema:
+  - {name: dt_custodia, type: date64}
+  - {name: cod_xp_us_cliente, type: string}
+  - {name: cod_xp_cliente, type: string, only_digits: true}
+  - {name: vlr_auc_dolar, type: float64}
+  - {name: produto, type: string}
+  - {name: sub_produto, type: string}
+  - {name: cod_ativo, type: string}
+  - {name: nome_ativo, type: string}
+  - {name: qtd_ativo, type: float64}
+  - {name: dt_vencimento, type: date64}
+  - {name: nome_gestor_fundo, type: string}
+  - {name: cusip, type: string}
+  - {name: isin, type: string}
+  - {name: nome_banqueiro_us, type: string}
+  - {name: cod_xp_assessor, type: string, only_digits: true}
+  - {name: nome_matriz, type: string}
+  - {name: segmento, type: string}
+  - {name: canal, type: string}
+  - {name: dt_ref, type: date64}
+  - {name: id_calendario_dt_ref, type: int32}
+redshift:
+  database: dw
+  schema: xp_inc
+  table: xp_us_custodia
+  load_mode: replace_partition
+quality:
+- {check: history_range, name: custodia, metric: SUM(vlr_auc_dolar)}
+- {check: history_range, name: clientes, metric: COUNT(DISTINCT cod_xp_us_cliente)}
