@@ -36,6 +36,33 @@ class GoldToRedshift:
 
         return RedshiftClient(RedshiftConnection(database=self.redshift.database))
 
+    def loaded_dt_refs(self) -> list[dict]:
+        """`dt_ref` já carregados na tabela de destino e quando foram
+        carregados pela última vez (`MAX(dt_relatorio)`), no formato do XCom."""
+        import pandas as pd
+
+        table = self.redshift.qualified_table
+        loaded = self.client.get(
+            f"SELECT dt_ref, MAX(dt_relatorio) AS dt_relatorio "
+            f"FROM {table} GROUP BY dt_ref"
+        )
+
+        if loaded.empty:
+            logger.warning(f"Redshift: {table} sem nenhum dt_ref carregado.")
+        else:
+            logger.info(
+                f"Redshift: {len(loaded)} dt_ref carregado(s) em "
+                f"{self.redshift.database}.{table} "
+                f"(de {loaded['dt_ref'].min()} a {loaded['dt_ref'].max()})."
+            )
+        return [
+            {
+                "dt_ref": str(row.dt_ref),
+                "dt_relatorio": pd.Timestamp(row.dt_relatorio).isoformat(),
+            }
+            for row in loaded.itertuples()
+        ]
+
     def run(self, file_name: str, gold_key: str, tipo: str | None = None) -> dict:
         schema, table = self.redshift.schema_name, self.redshift.table
         dt_ref = file_date(file_name)
