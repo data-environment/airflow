@@ -1,12 +1,3 @@
-"""Contrato bronze → silver definido no YAML (`bronze_to_silver`).
-
-Regras portadas do validador SmartCheck (validadordeproducoes):
-- a versão do contrato é escolhida pela data YYYYMMDD do nome do arquivo;
-- remove linhas vazias e o rodapé do export XP ("Filtros aplicados...");
-- renomeia `source` → `name` e valida cada linha com pydantic;
-- qualquer linha inválida falha o arquivo inteiro (nada é descartado em silêncio).
-"""
-
 import re
 from datetime import date, datetime
 from decimal import Decimal
@@ -14,7 +5,13 @@ from typing import Annotated, Optional
 
 import pandas as pd
 from pandas import DataFrame
-from pydantic import BaseModel, ConfigDict, StringConstraints, ValidationError, create_model
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    StringConstraints,
+    ValidationError,
+    create_model,
+)
 
 FOOTER_MARKER = "Filtros aplicados"
 NULL_MARKERS = {"", "nan", "none", "null", "''"}
@@ -90,7 +87,9 @@ def apply_contract(
     if footer_column and footer_column in df.columns:
         df = df[~df[footer_column].astype(str).str.startswith(FOOTER_MARKER)]
     if df.empty:
-        raise ValueError("O arquivo está vazio (depois de remover linhas vazias e rodapé).")
+        raise ValueError(
+            "O arquivo está vazio (depois de remover linhas vazias e rodapé)."
+        )
 
     missing = [
         column["source"]
@@ -108,7 +107,9 @@ def apply_contract(
     for index, record in zip(df.index, df.to_dict("records")):
         values = {
             column["name"]: (
-                _normalize_decimal if column.get("type") == "decimal" else _normalize_text
+                _normalize_decimal
+                if column.get("type") == "decimal"
+                else _normalize_text
             )(record.get(column["source"]))
             for column in columns
         }
@@ -123,7 +124,11 @@ def apply_contract(
             )
 
     if errors:
-        more = f"\n... e mais {len(errors) - MAX_ERRORS}" if len(errors) > MAX_ERRORS else ""
+        more = (
+            f"\n... e mais {len(errors) - MAX_ERRORS}"
+            if len(errors) > MAX_ERRORS
+            else ""
+        )
         raise ValueError(
             f"{len(errors)} erro(s) de validação do contrato:\n"
             + "\n".join(errors[:MAX_ERRORS])

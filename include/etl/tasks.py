@@ -209,7 +209,7 @@ def compare_gold_and_redshift(gold: list[dict], redshift: list[dict]) -> list[di
 @task(map_index_template="{{ file_name }}")
 def etl_bronze_to_silver(contract: dict, record: dict) -> dict:
     """Lê um arquivo da bronze, aplica o contrato e grava na silver."""
-    from include.etl.contract import apply_contract, select_version
+    from include.etl.bronze_to_silver import apply_contract, select_version
     from include.etl.file_types import build_file_type
 
     get_current_context()["file_name"] = record["FileName"]
@@ -248,7 +248,7 @@ def etl_silver_to_gold(contract: dict, record: dict) -> dict:
 
     O formato da silver é o `destination` da versão do contrato
     bronze → silver que gerou o arquivo (escolhida pela data do nome)."""
-    from include.etl.contract import select_version
+    from include.etl.bronze_to_silver import select_version
     from include.etl.file_types import Parquet, build_file_type
     from include.etl.silver_to_gold import arrow_schema, to_gold
 
@@ -289,7 +289,7 @@ def etl_gold_to_redshift(contract: dict, record: dict) -> dict:
     """
     from include.aws.redshift.client import RedshiftClient
     from include.aws.redshift.connection import RedshiftConnection
-    from include.etl.contract import file_date
+    from include.etl.bronze_to_silver import file_date
 
     get_current_context()["file_name"] = record["FileName"]
     redshift = _require(contract, "redshift")

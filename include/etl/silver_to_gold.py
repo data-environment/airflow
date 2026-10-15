@@ -1,23 +1,16 @@
-"""Silver → gold a partir do `silver_to_gold.schema` do YAML.
-
-Cada coluna do schema tem `name` e `type` (alias do pyarrow: string, float64,
-int32, date64, timestamp[ns]...) e, opcionalmente, `only_digits: true`.
-
-`dt_ref` e `id_calendario_dt_ref` não vêm da silver: saem da data YYYYMMDD
-do nome do arquivo.
-"""
-
 import pandas as pd
 import pyarrow as pa
 from pandas import DataFrame, Series
 
-from include.etl.contract import file_date
+from include.etl.bronze_to_silver import file_date
 
 DERIVED_COLUMNS = {"dt_ref", "id_calendario_dt_ref"}
 
 
 def arrow_schema(columns: list[dict]) -> pa.Schema:
-    return pa.schema([(column["name"], pa.type_for_alias(column["type"])) for column in columns])
+    return pa.schema(
+        [(column["name"], pa.type_for_alias(column["type"])) for column in columns]
+    )
 
 
 def _to_datetime(values: Series) -> Series:
@@ -55,7 +48,8 @@ def to_gold(silver: DataFrame, columns: list[dict], file_name: str) -> DataFrame
     missing = [
         column["name"]
         for column in columns
-        if column["name"] not in DERIVED_COLUMNS and column["name"] not in silver.columns
+        if column["name"] not in DERIVED_COLUMNS
+        and column["name"] not in silver.columns
     ]
     if missing:
         raise ValueError(
@@ -75,5 +69,7 @@ def to_gold(silver: DataFrame, columns: list[dict], file_name: str) -> DataFrame
             else:
                 gold[name] = _convert(silver[name], column)
         except (ValueError, TypeError) as exc:
-            raise ValueError(f"Falha ao converter a coluna '{name}' para {column['type']}: {exc}") from exc
+            raise ValueError(
+                f"Falha ao converter a coluna '{name}' para {column['type']}: {exc}"
+            ) from exc
     return gold.reset_index(drop=True)
