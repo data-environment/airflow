@@ -1,23 +1,48 @@
+# General
 pipeline: carteira_automatizada
-description: 'XP carteira automatizada: bronze → silver → gold → Redshift.'
+display_name: "Carteira Automatizada"
 owner: dw
+description: "Posição de clientes XP em carteiras automatizadas, por cliente/assessor/carteira: valor aportado, posição, rentabilidade, data de entrada, execuções e status."
+business_justification: "A definir com área de negócio."
 tags:
 - carteira_automatizada
 schedule: 33 22 * * 1-5
 retries: 1
+# Source and Extraction
+source:
+  description: "Arquivo XLSX de carteiras automatizadas exportado da XP."
+  disponibilization_sla: {days: 2}
+  owner: "XP"
+  contact: "XP"
+extraction:
+  description: "Arquivo XLSX exportado manualmente da XP pelo time de Performance, enviado ao SmartCheck para validação. Cada arquivo é uma foto da data de referência (dt_ref)."
+  capture_method: manual
+  capture_sla: {days: 4}
+  contact: "performance.best@investsmart.com.br"
+  reprocessing_window_days: 91
+# AWS
 s3:
   path: investsmart/xp_inc/carteira_automatizada
   file: carteira_automatizada
+  cnpj: false
+  segment: false
+redshift:
+  database: dw
+  schema: xp_inc
+  table: carteira_automatizada
+  load_mode: replace_partition
+  partition_key: dt_ref 
+# ETL
 bronze_to_silver:
   versions:
-  - from: 2025-01-01
+  - from: 2026-01-01
     origin: {type: xlsx}
     destination: {type: csv, sep: ;, encoding: UTF-8}
     filter_rules:
     - {column: Cliente, op: startswith, value: Filtros aplicados}
     - {column: Última execução, op: regex, value: '^(?:01/01/0001|0001-01-01)'}
     columns:
-    - {name: cod_xp_cliente, source: Cliente, min_length: 3, max_length: 8}
+    - {name: cod_xp_cliente, source: Cliente, min_length: 3, max_length: 9}
     - {name: cod_xp_assessor, source: Cód. Assessor Cliente, min_length: 4, max_length: 6}
     - {name: carteira, source: Carteira, min_length: 2, max_length: 128}
     - {name: vlr_aportado, source: Valor aportado, type: decimal}
@@ -28,21 +53,33 @@ bronze_to_silver:
     - {name: dt_proxima_execucao, source: Próximo execução}
     - {name: status, source: Status, min_length: 2, max_length: 32}
 silver_to_gold:
-  schema:
-  - {name: cod_xp_cliente, type: string, only_digits: true}
-  - {name: cod_xp_assessor, type: string, only_digits: true}
-  - {name: carteira, type: string}
-  - {name: vlr_aportado, type: float64}
-  - {name: vlr_posicao, type: float64}
-  - {name: vlr_rentabilidade, type: float64}
-  - {name: dt_entrada, type: date64}
-  - {name: dt_ultima_execucao, type: date64}
-  - {name: dt_proxima_execucao, type: date64}
-  - {name: status, type: string}
-  - {name: dt_ref, type: date64}
-  - {name: id_calendario_dt_ref, type: int32}
-redshift:
-  database: dw
-  schema: xp_inc
-  table: carteira_automatizada
-  load_mode: replace_partition
+  versions:
+  - from: 2026-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: cod_xp_cliente, type: string, only_digits: true}
+    - {name: cod_xp_assessor, type: string, only_digits: true}
+    - {name: carteira, type: string}
+    - {name: vlr_aportado, type: float64}
+    - {name: vlr_posicao, type: float64}
+    - {name: vlr_rentabilidade, type: float64}
+    - {name: dt_entrada, type: date64}
+    - {name: dt_ultima_execucao, type: date64}
+    - {name: dt_proxima_execucao, type: date64}
+    - {name: status, type: string}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  s3_delay:
+    max_days_without_update: 4
+    to: [performance.best@investsmart.com.br]
+    cc: [performance.best@investsmart.com.br]
+  redshift_delay:
+    to: [performance.best@investsmart.com.br]
+    cc: [performance.best@investsmart.com.br]
+  job_failure:
+    to: [slack]
