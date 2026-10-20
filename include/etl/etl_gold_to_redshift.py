@@ -87,7 +87,11 @@ class GoldToRedshift:
                 )
 
             deleted = self.client.replace_partition_from_staging(
-                schema, table, staging_table, business_columns, f"dt_ref = '{dt_ref}'"
+                schema,
+                table,
+                staging_table,
+                business_columns,
+                f"{self.redshift.partition_key} = '{dt_ref}'",
             )
         finally:
             self.client.drop_table(schema, staging_table)
