@@ -1,14 +1,36 @@
+# General
 pipeline: xp_internacional_remessas
-description: 'XP internacional remessas: bronze (CNPJ) → silver → gold → Redshift.'
+display_name: "XP Internacional - Remessas"
 owner: dw
+description: "Ordens de remessa internacional (câmbio) de clientes XP com conta offshore digital: valores em dólar e real, câmbio aplicado, IOF, spread, tipo da ordem (envio/recebimento, push/self-service, mercado aberto/fechado), assessor e segmento."
+business_justification: "A definir com área de negócio."
 tags:
 - xp_internacional_remessas
 schedule: 18 22 * * 1-5
 retries: 1
+# Source and Extraction
+source:
+  description: "Arquivo XLSX de remessas internacionais exportado da XP."
+  owner: "XP"
+  contact: "XP"
+extraction:
+  description: "Arquivo XLSX exportado manualmente da XP pelo time de Performance, enviado ao SmartCheck para validação. Cada arquivo é uma foto da data de referência (dt_ref)."
+  capture_method: manual
+  contact: "performance.best@investsmart.com.br"
+  reprocessing_window_days: 91
+# AWS
 s3:
   path: investsmart/xp_inc/xp_internacional_remessas
   file: xp_internacional_remessas
   cnpj: true
+  partitioned: false
+redshift:
+  database: dw
+  schema: xp_inc
+  table: xp_internacional_remessas
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
 bronze_to_silver:
   versions:
   - from: 2020-01-01
@@ -35,27 +57,40 @@ bronze_to_silver:
     - {name: segmento, source: Segmento, required: false}
     - {name: id_ordem_cambio, source: Identificador Único da Ordem - Câmbio}
 silver_to_gold:
-  schema:
-  - {name: dt_operacao, type: date64}
-  - {name: cod_conta_offshore_digital, type: string}
-  - {name: cod_xp_conta, type: string}
-  - {name: dt_abertura_conta_offshore_digital, type: date64}
-  - {name: vlr_ordem_remessas_dol, type: float64}
-  - {name: vlr_ordem_remessa_real, type: float64}
-  - {name: vlr_moeda_cambio_real, type: float64}
-  - {name: vlr_iof_real, type: float64}
-  - {name: pct_taxa_iof, type: float64}
-  - {name: pct_taxa_spread, type: float64}
-  - {name: ordem_envio_ou_recebimento, type: string}
-  - {name: ordem_push_ou_self, type: string}
-  - {name: ordem_mercado_aberto_ou_fechado, type: string}
-  - {name: cod_xp_assessor, type: string}
-  - {name: segmento, type: string}
-  - {name: id_ordem_cambio, type: string}
-  - {name: dt_ref, type: date64}
-  - {name: id_calendario_dt_ref, type: int32}
-redshift:
-  database: dw
-  schema: xp_inc
-  table: xp_internacional_remessas
-  load_mode: replace_partition
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: dt_operacao, type: date64}
+    - {name: cod_conta_offshore_digital, type: string}
+    - {name: cod_xp_conta, type: string}
+    - {name: dt_abertura_conta_offshore_digital, type: date64}
+    - {name: vlr_ordem_remessas_dol, type: float64}
+    - {name: vlr_ordem_remessa_real, type: float64}
+    - {name: vlr_moeda_cambio_real, type: float64}
+    - {name: vlr_iof_real, type: float64}
+    - {name: pct_taxa_iof, type: float64}
+    - {name: pct_taxa_spread, type: float64}
+    - {name: ordem_envio_ou_recebimento, type: string}
+    - {name: ordem_push_ou_self, type: string}
+    - {name: ordem_mercado_aberto_ou_fechado, type: string}
+    - {name: cod_xp_assessor, type: string}
+    - {name: segmento, type: string}
+    - {name: id_ordem_cambio, type: string}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  s3_delay:
+    max_days_without_update: 3
+    to: [bruno.miranda@investsmart.com.br]
+    cc: [gestaodedados@investsmart.com.br, eduardo.pontes@investsmart.com.br, guilherme.guimaraes@investsmart.com.br]
+  redshift_delay:
+    sla: {days: 3}
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]

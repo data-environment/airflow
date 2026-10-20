@@ -1,13 +1,38 @@
+# General
 pipeline: indice_de_ruptura
-description: 'XP índice de ruptura: bronze → silver → gold → Redshift.'
+display_name: "Índice de Ruptura"
 owner: dw
+description: "Indicador consolidado de risco de ruptura/rotatividade de clientes da XP, por conta de cliente. Traz o assessor e o modelo de atendimento responsáveis, o AuC (Assets under Custody), um conjunto de flags de comportamento de risco (saída via STVM, controle de alocação, monoproduto sem cross-sell, sem aportes recentes, rentabilidade negativa, sem ordens no período) e uma pontuação e contagem de meses em situação de ruptura."
+business_justification: "A definir com área de negócio."
 tags:
 - indice_de_ruptura
 schedule: 3 22 * * 1-5
 retries: 1
+# Source and Extraction
+source:
+  description: "Arquivo XLSX extraído do Hub da XP."
+  disponibilization_sla: {days: 2}
+  owner: "XP"
+  contact: "XP"
+extraction:
+  description: "Arquivo XLSX extraído manualmente do Hub da XP pelo time de Performance, enviado ao SmartCheck para validação. Periodicidade diária, de segunda a sexta; consumido como snapshot mensal, coletado a cada 3 dias no máximo."
+  capture_method: manual
+  capture_sla: {days: 3}
+  contact: "performance.best@investsmart.com.br"
+  reprocessing_window_days: 91
+# AWS
 s3:
   path: investsmart/xp_inc/indice_de_ruptura
   file: indice_de_ruptura
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: xp_inc
+  table: indice_de_ruptura
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
 bronze_to_silver:
   versions:
   - from: 2020-01-01
@@ -51,25 +76,38 @@ bronze_to_silver:
     - {name: pontuacao_ruptura, source: Pontuação Ruptura, type: decimal, required: false}
     - {name: qtd_meses_ruptura, source: Meses em Ruptura, type: decimal, required: false}
 silver_to_gold:
-  schema:
-  - {name: cod_xp_assessor, type: string, only_digits: true}
-  - {name: nome_assessor, type: string}
-  - {name: cod_xp_cliente, type: string, only_digits: true}
-  - {name: modelo, type: string}
-  - {name: vlr_auc, type: float64}
-  - {name: nps_detrator, type: int32}
-  - {name: flag_stvm_out, type: bool}
-  - {name: flag_controle_alocacao, type: bool}
-  - {name: flag_monoproduto_cross_sell, type: bool}
-  - {name: flag_sem_aportes, type: bool}
-  - {name: flag_rentabilidade_negativa, type: bool}
-  - {name: flag_sem_ordem, type: bool}
-  - {name: pontuacao_ruptura, type: int32}
-  - {name: qtd_meses_ruptura, type: int32}
-  - {name: dt_ref, type: date64}
-  - {name: id_calendario_dt_ref, type: int32}
-redshift:
-  database: dw
-  schema: xp_inc
-  table: indice_de_ruptura
-  load_mode: replace_partition
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: cod_xp_assessor, type: string, only_digits: true}
+    - {name: nome_assessor, type: string}
+    - {name: cod_xp_cliente, type: string, only_digits: true}
+    - {name: modelo, type: string}
+    - {name: vlr_auc, type: float64}
+    - {name: nps_detrator, type: int32}
+    - {name: flag_stvm_out, type: bool}
+    - {name: flag_controle_alocacao, type: bool}
+    - {name: flag_monoproduto_cross_sell, type: bool}
+    - {name: flag_sem_aportes, type: bool}
+    - {name: flag_rentabilidade_negativa, type: bool}
+    - {name: flag_sem_ordem, type: bool}
+    - {name: pontuacao_ruptura, type: int32}
+    - {name: qtd_meses_ruptura, type: int32}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  s3_delay:
+    max_days_without_update: 3
+    to: [bruno.miranda@investsmart.com.br]
+    cc: [gestaodedados@investsmart.com.br, eduardo.pontes@investsmart.com.br, guilherme.guimaraes@investsmart.com.br]
+  redshift_delay:
+    sla: {days: 1}
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]

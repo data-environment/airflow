@@ -1,13 +1,38 @@
+# General
 pipeline: captacao_parcial
-description: 'XP captação parcial (TED): bronze → silver → gold → Redshift.'
+display_name: "Captação Parcial"
 owner: dw
+description: "Cadastro de eventos de captação via TED (entrada/saída de recursos), por assessor e conta de cliente, entregue em quase tempo real pela XP. Cada registro representa um evento de captação parcial (antes do fechamento oficial da captação) associado a um assessor, uma conta de cliente e uma data."
+business_justification: "Notificação eficiente de transações para assessores; atualização de captação em bases diárias, antes do fechamento oficial; acompanhamento da velocidade de TEDs."
 tags:
 - captacao_parcial
 schedule: 3 23 * * 1-5
 retries: 1
+# Source and Extraction
+source:
+  description: "Arquivo CSV extraído do Hub da XP."
+  disponibilization_sla: {days: 2}
+  owner: "XP"
+  contact: "XP"
+extraction:
+  description: "Arquivo CSV extraído manualmente do Hub da XP pelo time de Performance, enviado ao SmartCheck para validação. Periodicidade diária, de segunda a sexta; consumido como snapshot mensal, coletado a cada 4 dias no máximo."
+  capture_method: manual
+  capture_sla: {days: 4}
+  contact: "performance.best@investsmart.com.br"
+  reprocessing_window_days: 91
+# AWS
 s3:
   path: investsmart/xp_inc/captacao_parcial
   file: captacao_parcial
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: xp_inc
+  table: captacao_parcial
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
 bronze_to_silver:
   versions:
   - from: 2020-01-01
@@ -30,21 +55,34 @@ bronze_to_silver:
     - {name: vlr_saida, source: Saídas, type: decimal}
     - {name: vlr_captacao, source: Saldo, type: decimal, required: false}
 silver_to_gold:
-  schema:
-  - {name: dt_captacao, type: date64}
-  - {name: nucleo, type: string}
-  - {name: matriz, type: string}
-  - {name: cod_xp_assessor, type: string, only_digits: true}
-  - {name: cod_xp_cliente, type: string, only_digits: true}
-  - {name: tipo_cliente, type: string}
-  - {name: cod_instituicao_financeira, type: string}
-  - {name: vlr_entrada, type: float64}
-  - {name: vlr_saida, type: float64}
-  - {name: vlr_captacao, type: float64}
-  - {name: dt_ref, type: date64}
-  - {name: id_calendario_dt_ref, type: int32}
-redshift:
-  database: dw
-  schema: xp_inc
-  table: captacao_parcial
-  load_mode: replace_partition
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: dt_captacao, type: date64}
+    - {name: nucleo, type: string}
+    - {name: matriz, type: string}
+    - {name: cod_xp_assessor, type: string, only_digits: true}
+    - {name: cod_xp_cliente, type: string, only_digits: true}
+    - {name: tipo_cliente, type: string}
+    - {name: cod_instituicao_financeira, type: string}
+    - {name: vlr_entrada, type: float64}
+    - {name: vlr_saida, type: float64}
+    - {name: vlr_captacao, type: float64}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  s3_delay:
+    max_days_without_update: 4
+    to: [bruno.miranda@investsmart.com.br]
+    cc: [gestaodedados@investsmart.com.br, eduardo.pontes@investsmart.com.br, guilherme.guimaraes@investsmart.com.br]
+  redshift_delay:
+    sla: {days: 1}
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]

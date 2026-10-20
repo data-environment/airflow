@@ -1,13 +1,38 @@
+# General
 pipeline: positivador
-description: 'XP positivador: bronze → silver → gold → Redshift.'
+display_name: "Positivador"
 owner: dw
+description: "Snapshot diário de posição e atividade dos clientes da XP por assessor — custódia (NET) segmentada por classe de produto, receita gerada no mês, captação bruta/líquida por canal, indicadores de ativação/evasão e dados cadastrais básicos (profissão, sexo, segmento/suitability, datas de cadastro/nascimento)."
+business_justification: "Controle de custódia a nível de cliente; identificação de segmento de cliente; identificação de taxa de ativação de contas; complementar ao dado de Diversificação."
 tags:
 - positivador
 sensor_interval: 5400
 retries: 1
+# Source and Extraction
+source:
+  description: "Arquivo XSLX extraído do Hub da XP."
+  disponibilization_sla: {days: 2}
+  owner: "XP"
+  contact: "XP"
+extraction:
+  description: "Arquivo XSLX extraído manualmente do Hub da XP pelo time de Performance, enviado ao SmartCheck para validação. Periodicidade diária, de segunda a sexta; consumido como snapshot mensal, coletado a cada 4 dias no máximo."
+  capture_method: manual
+  capture_sla: {days: 4}
+  contact: "performance.best@investsmart.com.br"
+  reprocessing_window_days: 91
+# AWS
 s3:
   path: investsmart/xp_inc/positivador
   file: positivador
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: xp_inc
+  table: positivador
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
 bronze_to_silver:
   versions:
   - from: 2020-01-01
@@ -113,64 +138,76 @@ bronze_to_silver:
     - {name: tipo_pessoa, source: Tipo Pessoa, required: false, min_length: 10, max_length: 15}
     - {name: dt_posicao, source: Data_Atualização, required: false}
 silver_to_gold:
-  schema:
-  - {name: cod_xp_assessor, type: string}
-  - {name: cod_xp_cliente, type: string}
-  - {name: profissao, type: string}
-  - {name: sexo, type: string}
-  - {name: segmento, type: string}
-  - {name: segmentacao_cliente, type: string}
-  - {name: suitability, type: string}
-  - {name: termo_qualificado, type: string}
-  - {name: termo_profissional, type: string}
-  - {name: dt_cadastro, type: date64}
-  - {name: segundo_aporte, type: string}
-  - {name: dt_nascimento, type: date64}
-  - {name: status, type: string}
-  - {name: ativou_m, type: string}
-  - {name: evadiu_m, type: string}
-  - {name: operou_bolsa, type: string}
-  - {name: operou_fundo, type: string}
-  - {name: operou_renda_fixa, type: string}
-  - {name: aplicacao_financeira_declarada, type: float64}
-  - {name: vlr_receita_mes, type: float64}
-  - {name: vlr_receita_bovespa, type: float64}
-  - {name: vlr_receita_futuros, type: float64}
-  - {name: vlr_receita_rf_bancarios, type: float64}
-  - {name: vlr_receita_rf_privados, type: float64}
-  - {name: vlr_receita_rf_publicos, type: float64}
-  - {name: vlr_captacao_bruta_m, type: float64}
-  - {name: vlr_resgate_m, type: float64}
-  - {name: vlr_captacao_liquida_m, type: float64}
-  - {name: vlr_captacao_ted, type: float64}
-  - {name: vlr_captacao_st, type: float64}
-  - {name: vlr_captacao_ota, type: float64}
-  - {name: vlr_captacao_rf, type: float64}
-  - {name: vlr_captacao_td, type: float64}
-  - {name: vlr_captacao_prev, type: float64}
-  - {name: vlr_net_mme1, type: float64}
-  - {name: vlr_net_m, type: float64}
-  - {name: vlr_net_renda_fixa, type: float64}
-  - {name: vlr_net_fundos_imobiliarios, type: float64}
-  - {name: vlr_net_renda_variavel, type: float64}
-  - {name: vlr_net_fundos, type: float64}
-  - {name: vlr_net_financeiro, type: float64}
-  - {name: vlr_net_previdencia, type: float64}
-  - {name: vlr_net_outros, type: float64}
-  - {name: vlr_receita_aluguel, type: float64}
-  - {name: vlr_receita_complemento_pacote_corretagem, type: float64}
-  - {name: tipo_pessoa, type: string}
-  - {name: dt_posicao, type: date64}
-  - {name: dt_ref, type: date64}
-  - {name: id_calendario_dt_ref, type: int32}
-redshift:
-  database: dw
-  schema: xp_inc
-  table: positivador
-  load_mode: replace_partition
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: cod_xp_assessor, type: string}
+    - {name: cod_xp_cliente, type: string}
+    - {name: profissao, type: string}
+    - {name: sexo, type: string}
+    - {name: segmento, type: string}
+    - {name: segmentacao_cliente, type: string}
+    - {name: suitability, type: string}
+    - {name: termo_qualificado, type: string}
+    - {name: termo_profissional, type: string}
+    - {name: dt_cadastro, type: date64}
+    - {name: segundo_aporte, type: string}
+    - {name: dt_nascimento, type: date64}
+    - {name: status, type: string}
+    - {name: ativou_m, type: string}
+    - {name: evadiu_m, type: string}
+    - {name: operou_bolsa, type: string}
+    - {name: operou_fundo, type: string}
+    - {name: operou_renda_fixa, type: string}
+    - {name: aplicacao_financeira_declarada, type: float64}
+    - {name: vlr_receita_mes, type: float64}
+    - {name: vlr_receita_bovespa, type: float64}
+    - {name: vlr_receita_futuros, type: float64}
+    - {name: vlr_receita_rf_bancarios, type: float64}
+    - {name: vlr_receita_rf_privados, type: float64}
+    - {name: vlr_receita_rf_publicos, type: float64}
+    - {name: vlr_captacao_bruta_m, type: float64}
+    - {name: vlr_resgate_m, type: float64}
+    - {name: vlr_captacao_liquida_m, type: float64}
+    - {name: vlr_captacao_ted, type: float64}
+    - {name: vlr_captacao_st, type: float64}
+    - {name: vlr_captacao_ota, type: float64}
+    - {name: vlr_captacao_rf, type: float64}
+    - {name: vlr_captacao_td, type: float64}
+    - {name: vlr_captacao_prev, type: float64}
+    - {name: vlr_net_mme1, type: float64}
+    - {name: vlr_net_m, type: float64}
+    - {name: vlr_net_renda_fixa, type: float64}
+    - {name: vlr_net_fundos_imobiliarios, type: float64}
+    - {name: vlr_net_renda_variavel, type: float64}
+    - {name: vlr_net_fundos, type: float64}
+    - {name: vlr_net_financeiro, type: float64}
+    - {name: vlr_net_previdencia, type: float64}
+    - {name: vlr_net_outros, type: float64}
+    - {name: vlr_receita_aluguel, type: float64}
+    - {name: vlr_receita_complemento_pacote_corretagem, type: float64}
+    - {name: tipo_pessoa, type: string}
+    - {name: dt_posicao, type: date64}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
 quality:
 - {check: volume, max_ratio: 1.5, last: 4}
 - {check: history_range, name: custodia, metric: SUM(vlr_net_m)}
 - {check: history_range, name: clientes, metric: COUNT(DISTINCT cod_xp_cliente)}
 - {check: history_range, name: assessores, metric: COUNT(DISTINCT cod_xp_assessor)}
 - {check: history_range, name: inativos, metric: "COUNT(CASE WHEN status = 'Inativo' THEN 1 END)"}
+alerts:
+  s3_delay:
+    max_days_without_update: 4
+    to: [bruno.miranda@investsmart.com.br]
+    cc: [gestaodedados@investsmart.com.br, eduardo.pontes@investsmart.com.br, guilherme.guimaraes@investsmart.com.br]
+  redshift_delay:
+    sla: {days: 1}
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]

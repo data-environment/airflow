@@ -1,13 +1,36 @@
+# General
 pipeline: trade_idea
-description: 'XP trade idea: bronze → silver → gold → Redshift.'
+display_name: "Trade Idea"
 owner: dw
+description: "Posições de clientes XP em indicações de trade idea, com analista e casa de análise responsáveis, valor aportado, posição, rentabilidade, datas de entrada e limite de encerramento e status da indicação."
+business_justification: "A definir com área de negócio."
 tags:
 - trade_idea
 schedule: 20 23 * * 1-5
 retries: 1
+# Source and Extraction
+source:
+  description: "Arquivo XLSX de trade ideas exportado da XP."
+  owner: "XP"
+  contact: "XP"
+extraction:
+  description: "Arquivo XLSX exportado manualmente da XP pelo time de Performance, enviado ao SmartCheck para validação. Cada arquivo é uma foto da data de referência (dt_ref)."
+  capture_method: manual
+  contact: "performance.best@investsmart.com.br"
+  reprocessing_window_days: 91
+# AWS
 s3:
   path: investsmart/xp_inc/trade_idea
   file: trade_idea
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: xp_inc
+  table: trade_idea
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
 bronze_to_silver:
   versions:
   - from: 2020-01-01
@@ -31,25 +54,38 @@ bronze_to_silver:
     - {name: obs, source: Obs, required: false, min_length: 0, max_length: 512}
     - {name: id_usuario_envio, source: Usuario Envio, required: false, min_length: 2, max_length: 64}
 silver_to_gold:
-  schema:
-  - {name: cod_xp_cliente, type: string}
-  - {name: cod_xp_assessor, type: string}
-  - {name: id_trade_idea, type: string}
-  - {name: trade_idea, type: string}
-  - {name: nome_analista, type: string}
-  - {name: casa_analise, type: string}
-  - {name: vlr_aportado, type: float64}
-  - {name: vlr_posicao, type: float64}
-  - {name: prc_rentabilidade, type: float64}
-  - {name: dt_entrada, type: 'timestamp[ns]'}
-  - {name: dt_limite_encerramento, type: 'timestamp[ns]'}
-  - {name: status, type: string}
-  - {name: obs, type: string}
-  - {name: id_usuario_envio, type: string}
-  - {name: dt_ref, type: date64}
-  - {name: id_calendario_dt_ref, type: int32}
-redshift:
-  database: dw
-  schema: xp_inc
-  table: trade_idea
-  load_mode: replace_partition
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: cod_xp_cliente, type: string}
+    - {name: cod_xp_assessor, type: string}
+    - {name: id_trade_idea, type: string}
+    - {name: trade_idea, type: string}
+    - {name: nome_analista, type: string}
+    - {name: casa_analise, type: string}
+    - {name: vlr_aportado, type: float64}
+    - {name: vlr_posicao, type: float64}
+    - {name: prc_rentabilidade, type: float64}
+    - {name: dt_entrada, type: 'timestamp[ns]'}
+    - {name: dt_limite_encerramento, type: 'timestamp[ns]'}
+    - {name: status, type: string}
+    - {name: obs, type: string}
+    - {name: id_usuario_envio, type: string}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  s3_delay:
+    max_days_without_update: 3
+    to: [bruno.miranda@investsmart.com.br]
+    cc: [gestaodedados@investsmart.com.br, eduardo.pontes@investsmart.com.br, guilherme.guimaraes@investsmart.com.br]
+  redshift_delay:
+    sla: {days: 3}
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]

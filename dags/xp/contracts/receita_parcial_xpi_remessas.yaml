@@ -1,14 +1,38 @@
+# General
 pipeline: receita_parcial_xpi_remessas
-description: 'XP receita parcial XPI remessas: bronze (CNPJ) → silver → gold → Redshift.'
+display_name: "Receita Parcial — XP Internacional Remessas"
 owner: dw
+description: "Receita parcial da modalidade XP Internacional Remessas (câmbio e remessas internacionais). Cada registro é uma ordem de câmbio/remessa com conta offshore digital e conta Brasil, assessor, valores em USD e BRL, cotação aplicada, IOF, spread e características da ordem."
+business_justification: "A XP só libera os dados finais de receita no dia 5 do mês seguinte; este arquivo dá ao time de Performance uma visão parcial, ao longo do mês corrente, da receita gerada pelo produto XPI Remessas e dos assessores/clientes responsáveis."
 tags:
 - receita_parcial_xpi_remessas
 sensor_interval: 1800
 retries: 1
+# Source and Extraction
+source:
+  description: "Arquivo XLSX extraído do Hub da XP."
+  disponibilization_sla: {days: 2}
+  owner: "XP"
+  contact: "XP"
+extraction:
+  description: "Arquivo XLSX exportado manualmente do portal da XP pelo time de Performance, enviado ao SmartCheck para validação. Snapshot mensal coletado a cada 4 dias no máximo."
+  capture_method: manual
+  capture_sla: {days: 4}
+  contact: "performance.best@investsmart.com.br"
+  reprocessing_window_days: 91
+# AWS
 s3:
   path: investsmart/xp_inc/receita_parcial/receita_parcial_xpi_remessas
   file: receita_parcial_xpi_remessas
   cnpj: true
+  partitioned: false
+redshift:
+  database: dw
+  schema: xp_inc
+  table: receita_parcial_xpi_remessas
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
 bronze_to_silver:
   versions:
   - from: 2026-08-31
@@ -35,30 +59,43 @@ bronze_to_silver:
     - {name: canal, source: Canal, min_length: 3, max_length: 12}
     - {name: id_ordem_cambio, source: Identificador Único da Ordem - Câmbio, min_length: 36, max_length: 36}
 silver_to_gold:
-  schema:
-  - {name: dt_operacao, type: date64}
-  - {name: ano_nome_mes, type: string}
-  - {name: cod_conta_offshore_digital, type: string}
-  - {name: cod_xp_conta, type: string}
-  - {name: dt_abertura_conta_offshore_digital, type: date64}
-  - {name: vlr_dol_ordem_remessas, type: float64}
-  - {name: vlr_real_ordem_remessa, type: float64}
-  - {name: vlr_moeda_cambio, type: float64}
-  - {name: vlr_iof, type: float64}
-  - {name: taxa_percentual_iof, type: float64}
-  - {name: taxa_percentual_spread, type: float64}
-  - {name: ordem_envio_ou_recebimento, type: string}
-  - {name: ordem_push_ou_self, type: string}
-  - {name: ordem_mercado_aberto_ou_fechado, type: string}
-  - {name: cod_xp_assessor, type: string}
-  - {name: nome_matriz, type: string}
-  - {name: segmento, type: string}
-  - {name: canal, type: string}
-  - {name: id_ordem_cambio, type: string}
-  - {name: dt_ref, type: date64}
-  - {name: id_calendario_dt_ref, type: int32}
-redshift:
-  database: dw
-  schema: xp_inc
-  table: receita_parcial_xpi_remessas
-  load_mode: replace_partition
+  versions:
+  - from: 2026-08-31
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: dt_operacao, type: date64}
+    - {name: ano_nome_mes, type: string}
+    - {name: cod_conta_offshore_digital, type: string}
+    - {name: cod_xp_conta, type: string}
+    - {name: dt_abertura_conta_offshore_digital, type: date64}
+    - {name: vlr_dol_ordem_remessas, type: float64}
+    - {name: vlr_real_ordem_remessa, type: float64}
+    - {name: vlr_moeda_cambio, type: float64}
+    - {name: vlr_iof, type: float64}
+    - {name: taxa_percentual_iof, type: float64}
+    - {name: taxa_percentual_spread, type: float64}
+    - {name: ordem_envio_ou_recebimento, type: string}
+    - {name: ordem_push_ou_self, type: string}
+    - {name: ordem_mercado_aberto_ou_fechado, type: string}
+    - {name: cod_xp_assessor, type: string}
+    - {name: nome_matriz, type: string}
+    - {name: segmento, type: string}
+    - {name: canal, type: string}
+    - {name: id_ordem_cambio, type: string}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  s3_delay:
+    max_days_without_update: 4
+    to: [bruno.miranda@investsmart.com.br]
+    cc: [gestaodedados@investsmart.com.br, eduardo.pontes@investsmart.com.br, guilherme.guimaraes@investsmart.com.br]
+  redshift_delay:
+    sla: {hours: 1}
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]

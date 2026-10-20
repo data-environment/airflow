@@ -1,13 +1,37 @@
+# General
 pipeline: diversificacao
-description: 'XP diversificação: bronze → silver → gold → Redshift.'
+display_name: "Diversificação"
 owner: dw
+description: "Posição de custódia de ativos por cliente/assessor XP — quantidade e valor financeiro líquido (net) de cada ativo, produto, sub-produto e fator de risco na data de posição informada."
+business_justification: "Controle de custódia a nível de ativos; apoio à revisão e rebalanceamento de carteira; consulta de liquidez; consulta de vencimento de títulos; identificação de riscos."
 tags:
 - diversificacao
 sensor_interval: 612
 retries: 1
+# Source and Extraction
+source:
+  description: "Arquivo CSV fornecido pela XP."
+  disponibilization_sla: {days: 2}
+  owner: "XP"
+  contact: "XP"
+extraction:
+  description: "Arquivo CSV fornecido pela XP, coletado manualmente pelo time de Performance via portal da XP e enviado ao SmartCheck para validação. Periodicidade diária, de segunda a sexta; consumido como snapshot mensal, coletado a cada 4 dias no máximo."
+  capture_method: manual
+  capture_sla: {days: 4}
+  contact: "performance.best@investsmart.com.br"
+# AWS
 s3:
   path: investsmart/xp_inc/diversificacao
   file: diversificacao
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: xp_inc
+  table: diversificacao
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
 bronze_to_silver:
   versions:
   - from: 2027-01-01
@@ -26,25 +50,37 @@ bronze_to_silver:
     - {name: vlr_quantidade, source: Quantidade, type: decimal}
     - {name: vlr_net, source: NET, type: decimal}
 silver_to_gold:
-  schema:
-  - {name: dt_ref, type: date64}
-  - {name: dt_vencimento, type: date64}
-  - {name: cod_xp_assessor, type: string}
-  - {name: cod_xp_cliente, type: string}
-  - {name: produto, type: string}
-  - {name: sub_produto, type: string}
-  - {name: cnpj_fundo, type: string}
-  - {name: ativo, type: string}
-  - {name: emissor, type: string}
-  - {name: vlr_quantidade, type: float64}
-  - {name: vlr_net, type: float64}
-  - {name: id_calendario_dt_ref, type: int32}
-redshift:
-  database: dw
-  schema: xp_inc
-  table: diversificacao
-  load_mode: replace_partition
+  versions:
+  - from: 2027-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: dt_ref, type: date64}
+    - {name: dt_vencimento, type: date64}
+    - {name: cod_xp_assessor, type: string}
+    - {name: cod_xp_cliente, type: string}
+    - {name: produto, type: string}
+    - {name: sub_produto, type: string}
+    - {name: cnpj_fundo, type: string}
+    - {name: ativo, type: string}
+    - {name: emissor, type: string}
+    - {name: vlr_quantidade, type: float64}
+    - {name: vlr_net, type: float64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
 quality:
 - {check: history_range, name: pl, metric: SUM(vlr_net)}
 - {check: history_range, name: clientes, metric: COUNT(DISTINCT cod_xp_cliente)}
 - {check: history_range, name: assessores, metric: COUNT(DISTINCT cod_xp_assessor)}
+alerts:
+  s3_delay:
+    max_days_without_update: 4
+    to: [bruno.miranda@investsmart.com.br]
+    cc: [gestaodedados@investsmart.com.br, eduardo.pontes@investsmart.com.br, guilherme.guimaraes@investsmart.com.br]
+  redshift_delay:
+    sla: {days: 1}
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]

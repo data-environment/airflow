@@ -25,13 +25,13 @@ s3:
   path: investsmart/xp_inc/carteira_automatizada
   file: carteira_automatizada
   cnpj: false
-  segment: false
+  partitioned: false
 redshift:
   database: dw
   schema: xp_inc
   table: carteira_automatizada
   load_mode: replace_partition
-  partition_key: dt_ref 
+  partition_key: dt_ref
 # ETL
 bronze_to_silver:
   versions:
@@ -79,6 +79,7 @@ alerts:
     to: [performance.best@investsmart.com.br]
     cc: [performance.best@investsmart.com.br]
   redshift_delay:
+    sla: {days: 3}
     to: [performance.best@investsmart.com.br]
     cc: [performance.best@investsmart.com.br]
   job_failure:

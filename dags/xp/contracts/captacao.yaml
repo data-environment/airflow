@@ -1,13 +1,38 @@
+# General
 pipeline: captacao
-description: 'XP captação: bronze → silver → gold → Redshift.'
+display_name: "Captação"
 owner: dw
+description: "Cadastro de eventos de captação (movimentação financeira) por assessor/cliente. Cada registro representa um evento de captação (entrada/saída de recursos) associado a um assessor e a uma conta de cliente, em uma data específica."
+business_justification: "Retenção de clientes; parabenizar assessores; avaliação em contexto de meta; avaliação de conta nova / conta antiga; definição de incentivos de captação."
 tags:
 - captacao
 schedule: 0 23 * * 1-5
 retries: 1
+# Source and Extraction
+source:
+  description: "Arquivo CSV extraído do Hub da XP."
+  disponibilization_sla: {days: 2}
+  owner: "XP"
+  contact: "XP"
+extraction:
+  description: "Arquivo CSV extraído manualmente do Hub da XP pelo time de Performance, enviado ao SmartCheck para validação. Periodicidade diária, de segunda a sexta; consumido como snapshot mensal, coletado a cada 4 dias no máximo."
+  capture_method: manual
+  capture_sla: {days: 4}
+  contact: "performance.best@investsmart.com.br"
+  reprocessing_window_days: 91
+# AWS
 s3:
   path: investsmart/xp_inc/captacao
   file: captacao
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: xp_inc
+  table: captacao
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
 bronze_to_silver:
   versions:
   - from: 2025-01-01
@@ -37,20 +62,33 @@ bronze_to_silver:
     - {name: dt_atualizacao, source: Data_Atualização, required: false}
     - {name: segmentacao_cliente, source: Segmentação Cliente, min_length: 5, max_length: 50}
 silver_to_gold:
-  schema:
-  - {name: escritorio, type: string}
-  - {name: dt_captacao, type: date64}
-  - {name: cod_xp_assessor, type: string, only_digits: true}
-  - {name: cod_xp_cliente, type: string, only_digits: true}
-  - {name: tipo_captacao, type: string}
-  - {name: aux, type: string}
-  - {name: vlr_captacao, type: float64}
-  - {name: dt_atualizacao, type: date64}
-  - {name: segmentacao_cliente, type: string}
-  - {name: dt_ref, type: date64}
-  - {name: id_calendario_dt_ref, type: int32}
-redshift:
-  database: dw
-  schema: xp_inc
-  table: captacao
-  load_mode: replace_partition
+  versions:
+  - from: 2025-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: escritorio, type: string}
+    - {name: dt_captacao, type: date64}
+    - {name: cod_xp_assessor, type: string, only_digits: true}
+    - {name: cod_xp_cliente, type: string, only_digits: true}
+    - {name: tipo_captacao, type: string}
+    - {name: aux, type: string}
+    - {name: vlr_captacao, type: float64}
+    - {name: dt_atualizacao, type: date64}
+    - {name: segmentacao_cliente, type: string}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  s3_delay:
+    max_days_without_update: 4
+    to: [bruno.miranda@investsmart.com.br]
+    cc: [gestaodedados@investsmart.com.br, eduardo.pontes@investsmart.com.br, guilherme.guimaraes@investsmart.com.br]
+  redshift_delay:
+    sla: {days: 1}
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]

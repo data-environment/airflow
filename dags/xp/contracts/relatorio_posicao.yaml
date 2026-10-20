@@ -1,13 +1,38 @@
+# General
 pipeline: relatorio_posicao
-description: 'XP relatório de posição: bronze → silver → gold → Redshift.'
+display_name: "Relatório de Posição"
 owner: dw
+description: "Relatório de posição de operações estruturadas por cliente/assessor, com até 4 blocos repetidos de atributos (quantidade, tipo, strike, barreira, rebate) por linha, representando possivelmente até 4 pernas/tranches de uma mesma operação."
+business_justification: "A definir com área de negócio."
 tags:
 - relatorio_posicao
 schedule: 24 22 * * 1-5
 retries: 1
+# Source and Extraction
+source:
+  description: "Arquivo XLSX extraído do Hub da XP."
+  disponibilization_sla: {days: 2}
+  owner: "XP"
+  contact: "XP"
+extraction:
+  description: "Arquivo XLSX extraído manualmente do Hub da XP pelo time de Performance, enviado ao SmartCheck para validação. Periodicidade diária, de segunda a sexta; consumido como snapshot mensal, coletado a cada 4 dias no máximo."
+  capture_method: manual
+  capture_sla: {days: 4}
+  contact: "performance.best@investsmart.com.br"
+  reprocessing_window_days: 91
+# AWS
 s3:
   path: investsmart/xp_inc/relatorio_posicao
   file: relatorio_posicao
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: xp_inc
+  table: relatorio_posicao
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
 bronze_to_silver:
   versions:
   - from: 2020-01-01
@@ -64,58 +89,71 @@ bronze_to_silver:
     - {name: vlr_rebate_4, source: Valor do Rebate (4), type: decimal, required: false}
     - {name: tipo_barreira_4, source: Tipo da Barreira (4), required: false, min_length: 0, max_length: 50}
 silver_to_gold:
-  schema:
-  - {name: cod_xp_cliente, type: string, only_digits: true}
-  - {name: cod_xp_assessor, type: string}
-  - {name: id_operacao, type: string, only_digits: true}
-  - {name: dt_registro, type: date64}
-  - {name: ativo, type: string}
-  - {name: estrutura, type: string}
-  - {name: canal_origem, type: string}
-  - {name: vlr_ativo, type: float64}
-  - {name: dt_vencimento, type: date64}
-  - {name: custo_unitario_cliente, type: float64}
-  - {name: vlr_comissao_assessor, type: float64}
-  - {name: qtd_ativa_1, type: float64}
-  - {name: quantidade_boleta_1, type: float64}
-  - {name: tipo_1, type: string}
-  - {name: pct_strike_1, type: float64}
-  - {name: vlr_strike_1, type: float64}
-  - {name: pct_barreira_1, type: float64}
-  - {name: vlr_barreira_1, type: float64}
-  - {name: vlr_rebate_1, type: float64}
-  - {name: tipo_barreira_1, type: string}
-  - {name: qtd_ativa_2, type: float64}
-  - {name: quantidade_boleta_2, type: float64}
-  - {name: tipo_2, type: string}
-  - {name: pct_strike_2, type: float64}
-  - {name: vlr_strike_2, type: float64}
-  - {name: pct_barreira_2, type: float64}
-  - {name: vlr_barreira_2, type: float64}
-  - {name: vlr_rebate_2, type: float64}
-  - {name: tipo_barreira_2, type: string}
-  - {name: qtd_ativa_3, type: float64}
-  - {name: quantidade_boleta_3, type: float64}
-  - {name: tipo_3, type: string}
-  - {name: pct_strike_3, type: float64}
-  - {name: vlr_strike_3, type: float64}
-  - {name: pct_barreira_3, type: float64}
-  - {name: vlr_barreira_3, type: float64}
-  - {name: vlr_rebate_3, type: float64}
-  - {name: tipo_barreira_3, type: string}
-  - {name: qtd_ativa_4, type: float64}
-  - {name: quantidade_boleta_4, type: float64}
-  - {name: tipo_4, type: string}
-  - {name: pct_strike_4, type: float64}
-  - {name: vlr_strike_4, type: float64}
-  - {name: pct_barreira_4, type: float64}
-  - {name: vlr_barreira_4, type: float64}
-  - {name: vlr_rebate_4, type: float64}
-  - {name: tipo_barreira_4, type: string}
-  - {name: dt_ref, type: date64}
-  - {name: id_calendario_dt_ref, type: int32}
-redshift:
-  database: dw
-  schema: xp_inc
-  table: relatorio_posicao
-  load_mode: replace_partition
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: cod_xp_cliente, type: string, only_digits: true}
+    - {name: cod_xp_assessor, type: string}
+    - {name: id_operacao, type: string, only_digits: true}
+    - {name: dt_registro, type: date64}
+    - {name: ativo, type: string}
+    - {name: estrutura, type: string}
+    - {name: canal_origem, type: string}
+    - {name: vlr_ativo, type: float64}
+    - {name: dt_vencimento, type: date64}
+    - {name: custo_unitario_cliente, type: float64}
+    - {name: vlr_comissao_assessor, type: float64}
+    - {name: qtd_ativa_1, type: float64}
+    - {name: quantidade_boleta_1, type: float64}
+    - {name: tipo_1, type: string}
+    - {name: pct_strike_1, type: float64}
+    - {name: vlr_strike_1, type: float64}
+    - {name: pct_barreira_1, type: float64}
+    - {name: vlr_barreira_1, type: float64}
+    - {name: vlr_rebate_1, type: float64}
+    - {name: tipo_barreira_1, type: string}
+    - {name: qtd_ativa_2, type: float64}
+    - {name: quantidade_boleta_2, type: float64}
+    - {name: tipo_2, type: string}
+    - {name: pct_strike_2, type: float64}
+    - {name: vlr_strike_2, type: float64}
+    - {name: pct_barreira_2, type: float64}
+    - {name: vlr_barreira_2, type: float64}
+    - {name: vlr_rebate_2, type: float64}
+    - {name: tipo_barreira_2, type: string}
+    - {name: qtd_ativa_3, type: float64}
+    - {name: quantidade_boleta_3, type: float64}
+    - {name: tipo_3, type: string}
+    - {name: pct_strike_3, type: float64}
+    - {name: vlr_strike_3, type: float64}
+    - {name: pct_barreira_3, type: float64}
+    - {name: vlr_barreira_3, type: float64}
+    - {name: vlr_rebate_3, type: float64}
+    - {name: tipo_barreira_3, type: string}
+    - {name: qtd_ativa_4, type: float64}
+    - {name: quantidade_boleta_4, type: float64}
+    - {name: tipo_4, type: string}
+    - {name: pct_strike_4, type: float64}
+    - {name: vlr_strike_4, type: float64}
+    - {name: pct_barreira_4, type: float64}
+    - {name: vlr_barreira_4, type: float64}
+    - {name: vlr_rebate_4, type: float64}
+    - {name: tipo_barreira_4, type: string}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  s3_delay:
+    max_days_without_update: 3
+    to: [bruno.miranda@investsmart.com.br]
+    cc: [gestaodedados@investsmart.com.br, eduardo.pontes@investsmart.com.br, guilherme.guimaraes@investsmart.com.br]
+  redshift_delay:
+    sla: {days: 1}
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]

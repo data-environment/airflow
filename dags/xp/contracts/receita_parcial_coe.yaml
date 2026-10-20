@@ -1,14 +1,38 @@
+# General
 pipeline: receita_parcial_coe
-description: 'XP receita parcial COE: bronze (CNPJ) → silver → gold → Redshift.'
+display_name: "Receita Parcial — COE"
 owner: dw
+description: "Receita parcial (acumulada ao longo do mês, antes do fechamento oficial) gerada por operações de COE (Certificado de Operações Estruturadas) na XP, por cliente e assessor responsável."
+business_justification: "A XP só libera os dados finais de receita no dia 5 do mês seguinte; este arquivo permite ao time de Performance acompanhar, ao longo do mês corrente, o valor financeiro gerado pelo produto COE, por cliente e assessor."
 tags:
 - receita_parcial_coe
 sensor_interval: 1800
 retries: 1
+# Source and Extraction
+source:
+  description: "Arquivo XLSX extraído do Hub da XP."
+  disponibilization_sla: {days: 2}
+  owner: "XP"
+  contact: "XP"
+extraction:
+  description: "Arquivo XLSX exportado manualmente do portal da XP pelo time de Performance, enviado ao SmartCheck para validação. Snapshot mensal coletado a cada 4 dias no máximo."
+  capture_method: manual
+  capture_sla: {days: 4}
+  contact: "performance.best@investsmart.com.br"
+  reprocessing_window_days: 91
+# AWS
 s3:
   path: investsmart/xp_inc/receita_parcial/receita_parcial_coe
   file: receita_parcial_coe
   cnpj: true
+  partitioned: false
+redshift:
+  database: dw
+  schema: xp_inc
+  table: receita_parcial_coe
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
 bronze_to_silver:
   versions:
   - from: 2026-08-10
@@ -32,25 +56,38 @@ bronze_to_silver:
     - {name: id_ordem, source: ID ordem, required: false, min_length: 7, max_length: 7, pattern: '^[0-9]+$'}
     - {name: vlr_financeiro, source: Valor Financeiro, type: decimal, required: false}
 silver_to_gold:
-  schema:
-  - {name: cod_xp_cliente, type: string}
-  - {name: cod_xp_assessor, type: string}
-  - {name: volume, type: int32}
-  - {name: vlr_receita, type: float64}
-  - {name: status, type: string}
-  - {name: ativo, type: string}
-  - {name: segmento, type: string}
-  - {name: tipo_operacao, type: string}
-  - {name: dt_operacao, type: date64}
-  - {name: dt_fim_oferta, type: date64}
-  - {name: dt_liquidacao, type: date64}
-  - {name: dt_vencimento, type: date64}
-  - {name: id_ordem, type: string}
-  - {name: vlr_financeiro, type: float64}
-  - {name: dt_ref, type: date64}
-  - {name: id_calendario_dt_ref, type: int32}
-redshift:
-  database: dw
-  schema: xp_inc
-  table: receita_parcial_coe
-  load_mode: replace_partition
+  versions:
+  - from: 2026-08-10
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: cod_xp_cliente, type: string}
+    - {name: cod_xp_assessor, type: string}
+    - {name: volume, type: int32}
+    - {name: vlr_receita, type: float64}
+    - {name: status, type: string}
+    - {name: ativo, type: string}
+    - {name: segmento, type: string}
+    - {name: tipo_operacao, type: string}
+    - {name: dt_operacao, type: date64}
+    - {name: dt_fim_oferta, type: date64}
+    - {name: dt_liquidacao, type: date64}
+    - {name: dt_vencimento, type: date64}
+    - {name: id_ordem, type: string}
+    - {name: vlr_financeiro, type: float64}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  s3_delay:
+    max_days_without_update: 4
+    to: [bruno.miranda@investsmart.com.br]
+    cc: [gestaodedados@investsmart.com.br, eduardo.pontes@investsmart.com.br, guilherme.guimaraes@investsmart.com.br]
+  redshift_delay:
+    sla: {hours: 1}
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]

@@ -1,14 +1,38 @@
+# General
 pipeline: receita_parcial_estruturadas
-description: 'XP receita parcial estruturadas: bronze (CNPJ) → silver → gold → Redshift.'
+display_name: "Receita Parcial — Estruturadas"
 owner: dw
+description: "Receita parcial da modalidade Operações Estruturadas da XP. Cada registro é uma operação estruturada (até 3 pernas) com cliente, assessor da operação e do cliente, ativo-objeto, estrutura, comissão e os detalhes financeiros de cada perna (strike, valores, barreiras, datas de execução em bolsa)."
+business_justification: "A XP só libera os dados finais de receita no dia 5 do mês seguinte; este arquivo dá ao time de Performance uma visão parcial, ao longo do mês corrente, da receita gerada pelo produto Operações Estruturadas e dos assessores/clientes responsáveis."
 tags:
 - receita_parcial_estruturadas
 sensor_interval: 1800
 retries: 1
+# Source and Extraction
+source:
+  description: "Arquivo XLSX extraído do Hub da XP."
+  disponibilization_sla: {days: 2}
+  owner: "XP"
+  contact: "XP"
+extraction:
+  description: "Arquivo XLSX exportado manualmente do portal da XP pelo time de Performance, enviado ao SmartCheck para validação. Snapshot mensal coletado a cada 4 dias no máximo."
+  capture_method: manual
+  capture_sla: {days: 4}
+  contact: "performance.best@investsmart.com.br"
+  reprocessing_window_days: 91
+# AWS
 s3:
   path: investsmart/xp_inc/receita_parcial/receita_parcial_estruturadas
   file: receita_parcial_estruturadas
   cnpj: true
+  partitioned: false
+redshift:
+  database: dw
+  schema: xp_inc
+  table: receita_parcial_estruturadas
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
 bronze_to_silver:
   versions:
   - from: 2020-01-01
@@ -69,64 +93,77 @@ bronze_to_silver:
     - {name: dt_execucao_bolsa_3, source: Data de execução da bolsa (3), required: false}
     - {name: escritorio, source: Escritório, required: false, min_length: 2, max_length: 55}
 silver_to_gold:
-  schema:
-  - {name: cod_cliente, type: string}
-  - {name: operacao, type: string}
-  - {name: dt_inclusao, type: date64}
-  - {name: ativo, type: string}
-  - {name: qtd, type: int64}
-  - {name: estrutura, type: string}
-  - {name: dt_fixing, type: date64}
-  - {name: preco_de_compra_da_acao, type: float64}
-  - {name: comissao, type: float64}
-  - {name: aai_operacao, type: string}
-  - {name: aai_cliente, type: string}
-  - {name: envio_ordem, type: string}
-  - {name: canal_origem, type: string}
-  - {name: perna_1, type: string}
-  - {name: tipo_1, type: string}
-  - {name: strike_1, type: float64}
-  - {name: porcentagem_strike_1, type: float64}
-  - {name: qtd_1, type: int64}
-  - {name: vlr_1, type: float64}
-  - {name: vlr_di_1, type: float64}
-  - {name: vlr_do_1, type: float64}
-  - {name: vlr_ui_1, type: float64}
-  - {name: vlr_uo_1, type: float64}
-  - {name: vlr_rebate_1, type: float64}
-  - {name: porcentagem_barreira_1, type: float64}
-  - {name: dt_execucao_bolsa_1, type: date64}
-  - {name: perna_2, type: string}
-  - {name: tipo_2, type: string}
-  - {name: strike_2, type: float64}
-  - {name: porcentagem_strike_2, type: float64}
-  - {name: qtd_2, type: int64}
-  - {name: vlr_2, type: float64}
-  - {name: vlr_di_2, type: float64}
-  - {name: vlr_do_2, type: float64}
-  - {name: vlr_ui_2, type: float64}
-  - {name: vlr_uo_2, type: float64}
-  - {name: vlr_rebate_2, type: float64}
-  - {name: porcentagem_barreira_2, type: float64}
-  - {name: dt_execucao_bolsa_2, type: date64}
-  - {name: perna_3, type: string}
-  - {name: tipo_3, type: string}
-  - {name: strike_3, type: float64}
-  - {name: porcentagem_strike_3, type: float64}
-  - {name: qtd_3, type: int64}
-  - {name: vlr_3, type: float64}
-  - {name: vlr_di_3, type: float64}
-  - {name: vlr_do_3, type: float64}
-  - {name: vlr_ui_3, type: float64}
-  - {name: vlr_uo_3, type: float64}
-  - {name: vlr_rebate_3, type: float64}
-  - {name: porcentagem_barreira_3, type: float64}
-  - {name: dt_execucao_bolsa_3, type: date64}
-  - {name: escritorio, type: string}
-  - {name: dt_ref, type: date64}
-  - {name: id_calendario_dt_ref, type: int32}
-redshift:
-  database: dw
-  schema: xp_inc
-  table: receita_parcial_estruturadas
-  load_mode: replace_partition
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: cod_cliente, type: string}
+    - {name: operacao, type: string}
+    - {name: dt_inclusao, type: date64}
+    - {name: ativo, type: string}
+    - {name: qtd, type: int64}
+    - {name: estrutura, type: string}
+    - {name: dt_fixing, type: date64}
+    - {name: preco_de_compra_da_acao, type: float64}
+    - {name: comissao, type: float64}
+    - {name: aai_operacao, type: string}
+    - {name: aai_cliente, type: string}
+    - {name: envio_ordem, type: string}
+    - {name: canal_origem, type: string}
+    - {name: perna_1, type: string}
+    - {name: tipo_1, type: string}
+    - {name: strike_1, type: float64}
+    - {name: porcentagem_strike_1, type: float64}
+    - {name: qtd_1, type: int64}
+    - {name: vlr_1, type: float64}
+    - {name: vlr_di_1, type: float64}
+    - {name: vlr_do_1, type: float64}
+    - {name: vlr_ui_1, type: float64}
+    - {name: vlr_uo_1, type: float64}
+    - {name: vlr_rebate_1, type: float64}
+    - {name: porcentagem_barreira_1, type: float64}
+    - {name: dt_execucao_bolsa_1, type: date64}
+    - {name: perna_2, type: string}
+    - {name: tipo_2, type: string}
+    - {name: strike_2, type: float64}
+    - {name: porcentagem_strike_2, type: float64}
+    - {name: qtd_2, type: int64}
+    - {name: vlr_2, type: float64}
+    - {name: vlr_di_2, type: float64}
+    - {name: vlr_do_2, type: float64}
+    - {name: vlr_ui_2, type: float64}
+    - {name: vlr_uo_2, type: float64}
+    - {name: vlr_rebate_2, type: float64}
+    - {name: porcentagem_barreira_2, type: float64}
+    - {name: dt_execucao_bolsa_2, type: date64}
+    - {name: perna_3, type: string}
+    - {name: tipo_3, type: string}
+    - {name: strike_3, type: float64}
+    - {name: porcentagem_strike_3, type: float64}
+    - {name: qtd_3, type: int64}
+    - {name: vlr_3, type: float64}
+    - {name: vlr_di_3, type: float64}
+    - {name: vlr_do_3, type: float64}
+    - {name: vlr_ui_3, type: float64}
+    - {name: vlr_uo_3, type: float64}
+    - {name: vlr_rebate_3, type: float64}
+    - {name: porcentagem_barreira_3, type: float64}
+    - {name: dt_execucao_bolsa_3, type: date64}
+    - {name: escritorio, type: string}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  s3_delay:
+    max_days_without_update: 4
+    to: [bruno.miranda@investsmart.com.br]
+    cc: [gestaodedados@investsmart.com.br, eduardo.pontes@investsmart.com.br, guilherme.guimaraes@investsmart.com.br]
+  redshift_delay:
+    sla: {hours: 1}
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]

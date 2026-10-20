@@ -1,14 +1,38 @@
+# General
 pipeline: receita_parcial_compromissadas
-description: 'XP receita parcial compromissadas: bronze (CNPJ) → silver → gold → Redshift.'
+display_name: "Receita Parcial — Compromissadas"
 owner: dw
+description: "Receita parcial do produto Compromissadas (operações compromissadas com renda acruada) da XP, por assessor e conta de cliente: datas de operação e vencimento, prazo, posição média acruada, taxa contratada e receita acruada a dividir."
+business_justification: "A XP só libera os dados finais de receita no dia 5 do mês seguinte; este arquivo permite ao time de Performance acompanhar, ao longo do mês, o valor financeiro gerado pelo produto Compromissadas, por assessor e cliente."
 tags:
 - receita_parcial_compromissadas
 sensor_interval: 1800
 retries: 1
+# Source and Extraction
+source:
+  description: "Arquivo XLSX extraído do Hub da XP."
+  disponibilization_sla: {days: 2}
+  owner: "XP"
+  contact: "XP"
+extraction:
+  description: "Arquivo XLSX exportado manualmente do portal da XP pelo time de Performance, enviado ao SmartCheck para validação. Snapshot mensal coletado a cada 4 dias no máximo."
+  capture_method: manual
+  capture_sla: {days: 4}
+  contact: "performance.best@investsmart.com.br"
+  reprocessing_window_days: 91
+# AWS
 s3:
   path: investsmart/xp_inc/receita_parcial/receita_parcial_compromissadas
   file: receita_parcial_compromissadas
   cnpj: true
+  partitioned: false
+redshift:
+  database: dw
+  schema: xp_inc
+  table: receita_parcial_compromissadas
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
 bronze_to_silver:
   versions:
   - from: 2020-01-01
@@ -24,19 +48,32 @@ bronze_to_silver:
     - {name: taxa_cliente, source: Taxa Cliente, required: false, min_length: 1, max_length: 25}
     - {name: receita_acruada_a_dividir, source: Receita acruada a Dividir, type: decimal, required: false}
 silver_to_gold:
-  schema:
-  - {name: dt_operacao, type: date64}
-  - {name: dt_vencimento, type: date64}
-  - {name: prazo_dias, type: int64}
-  - {name: cod_assessor, type: string, only_digits: true}
-  - {name: cod_conta, type: string}
-  - {name: posicao_media_acruada, type: float64}
-  - {name: taxa_cliente, type: string}
-  - {name: receita_acruada_a_dividir, type: float64}
-  - {name: dt_ref, type: date64}
-  - {name: id_calendario_dt_ref, type: int32}
-redshift:
-  database: dw
-  schema: xp_inc
-  table: receita_parcial_compromissadas
-  load_mode: replace_partition
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: dt_operacao, type: date64}
+    - {name: dt_vencimento, type: date64}
+    - {name: prazo_dias, type: int64}
+    - {name: cod_assessor, type: string, only_digits: true}
+    - {name: cod_conta, type: string}
+    - {name: posicao_media_acruada, type: float64}
+    - {name: taxa_cliente, type: string}
+    - {name: receita_acruada_a_dividir, type: float64}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  s3_delay:
+    max_days_without_update: 4
+    to: [bruno.miranda@investsmart.com.br]
+    cc: [gestaodedados@investsmart.com.br, eduardo.pontes@investsmart.com.br, guilherme.guimaraes@investsmart.com.br]
+  redshift_delay:
+    sla: {hours: 1}
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]

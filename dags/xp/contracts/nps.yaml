@@ -1,14 +1,35 @@
+# General
 pipeline: nps
-description: 'XP NPS: bronze (CNPJ) → silver → gold → Redshift.'
+display_name: "NPS"
 owner: dw
+description: "Pesquisa de satisfação (NPS) aplicada aos clientes da XP via Qualtrics. Um único arquivo reúne o disparo da pesquisa (data de envio, tipo de pesquisa, assessor/conta/escritório do cliente) e a resposta do cliente (notas à XP e ao assessor, comentários de melhoria/promoção/detração e indicação de novos clientes)."
+business_justification: "Medir a satisfação dos clientes com o assessor e com a XP, identificar clientes detratores e oportunidades de indicação de novos clientes, permitindo ações preventivas junto aos assessores."
 tags:
 - nps
 sensor_interval: 1800
 retries: 1
+# Source and Extraction
+source:
+  description: "Arquivo extraído do Hub da XP — Lista de Envio (exportação Funnel data do Qualtrics)."
+  owner: "XP"
+  contact: "XP"
+extraction:
+  description: "Arquivo XLSX extraído manualmente do portal da XP pelo time de Qualidade, enviado ao SmartCheck para validação. Periodicidade diária, de segunda a sexta; consumido como snapshot mensal."
+  capture_method: manual
+  contact: "qualidade@investsmart.com.br"
+# AWS
 s3:
   path: investsmart/xp_inc/nps
   file: nps
   cnpj: true
+  partitioned: false
+redshift:
+  database: dw
+  schema: xp_inc
+  table: nps
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
 bronze_to_silver:
   versions:
   - from: 2026-01-01
@@ -45,31 +66,44 @@ bronze_to_silver:
     - {name: indicaria_assessor_aniversario, source: 'Q6 - Você gostaria de indicar o seu assessor da XP Investimentos a um amigo ou familiar? [🟢 Jornada 2.1 - Aniversário XP]', required: false, min_length: 3, max_length: 3}
     - {name: dt_resposta, source: 'Survey Finished Time [Funnel data for Default Directory] (-03:00 GMT)', required: false}
 silver_to_gold:
-  schema:
-  - {name: email_cliente, type: string}
-  - {name: nome_cliente, type: string}
-  - {name: record_id, type: string}
-  - {name: response_id, type: string}
-  - {name: tipo_pesquisa, type: string}
-  - {name: faixa_net_m, type: string}
-  - {name: cod_xp_escritorio, type: string}
-  - {name: cod_xp_assessor, type: string, only_digits: true}
-  - {name: cod_xp_cliente, type: string}
-  - {name: nota_assessor, type: int32}
-  - {name: comentario_nps_aniversario_assessor, type: string}
-  - {name: comentario_nps_aniversario_xp, type: string}
-  - {name: comentario_detrator_nps_aniversario_assessor, type: string}
-  - {name: comentario_promotor_nps_aniversario_xp_assessor, type: string}
-  - {name: nome_indicacao_aniversario, type: string}
-  - {name: telefone_indicacao_aniversario, type: string}
-  - {name: email_indicacao_aniversario, type: string}
-  - {name: indicaria_assessor_aniversario, type: string}
-  - {name: dt_envio, type: 'timestamp[ns]'}
-  - {name: dt_resposta, type: 'timestamp[ns]'}
-  - {name: dt_ref, type: date64}
-  - {name: id_calendario_dt_ref, type: int32}
-redshift:
-  database: dw
-  schema: xp_inc
-  table: nps
-  load_mode: replace_partition
+  versions:
+  - from: 2026-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: email_cliente, type: string}
+    - {name: nome_cliente, type: string}
+    - {name: record_id, type: string}
+    - {name: response_id, type: string}
+    - {name: tipo_pesquisa, type: string}
+    - {name: faixa_net_m, type: string}
+    - {name: cod_xp_escritorio, type: string}
+    - {name: cod_xp_assessor, type: string, only_digits: true}
+    - {name: cod_xp_cliente, type: string}
+    - {name: nota_assessor, type: int32}
+    - {name: comentario_nps_aniversario_assessor, type: string}
+    - {name: comentario_nps_aniversario_xp, type: string}
+    - {name: comentario_detrator_nps_aniversario_assessor, type: string}
+    - {name: comentario_promotor_nps_aniversario_xp_assessor, type: string}
+    - {name: nome_indicacao_aniversario, type: string}
+    - {name: telefone_indicacao_aniversario, type: string}
+    - {name: email_indicacao_aniversario, type: string}
+    - {name: indicaria_assessor_aniversario, type: string}
+    - {name: dt_envio, type: 'timestamp[ns]'}
+    - {name: dt_resposta, type: 'timestamp[ns]'}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  s3_delay:
+    max_days_without_update: 6
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  redshift_delay:
+    sla: {days: 2}
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]

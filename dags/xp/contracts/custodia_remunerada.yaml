@@ -1,13 +1,36 @@
+# General
 pipeline: custodia_remunerada
-description: 'XP custódia remunerada: bronze → silver → gold → Redshift.'
+display_name: "Custódia Remunerada"
 owner: dw
+description: "Custódia de clientes XP por assessor/cliente/matriz: custódia total, custódia remunerada, custódia em doação e data/dias desde a assinatura do contrato de custódia remunerada."
+business_justification: "A definir com área de negócio."
 tags:
 - custodia_remunerada
 schedule: 36 22 * * 1-5
 retries: 1
+# Source and Extraction
+source:
+  description: "Arquivo XLSX de custódia remunerada exportado da XP."
+  owner: "XP"
+  contact: "XP"
+extraction:
+  description: "Arquivo XLSX exportado manualmente da XP pelo time de Performance, enviado ao SmartCheck para validação. Cada arquivo é uma foto da data de referência (dt_ref)."
+  capture_method: manual
+  contact: "performance.best@investsmart.com.br"
+  reprocessing_window_days: 91
+# AWS
 s3:
   path: investsmart/xp_inc/custodia_remunerada
   file: custodia_remunerada
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: xp_inc
+  table: custodia_remunerada
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
 bronze_to_silver:
   versions:
   - from: 2020-01-01
@@ -26,20 +49,33 @@ bronze_to_silver:
     - {name: dt_assinatura, source: Data da Assinatura, required: false}
     - {name: qtd_dias_assinatura, source: Dias desde Assinatura, type: decimal}
 silver_to_gold:
-  schema:
-  - {name: cod_xp_assessor, type: string, only_digits: true}
-  - {name: cod_xp_cliente, type: string, only_digits: true}
-  - {name: matriz, type: string}
-  - {name: status, type: string}
-  - {name: vlr_custodia_total, type: float64}
-  - {name: vlr_custodia_remunerada, type: float64}
-  - {name: vlr_custodia_doacao, type: float64}
-  - {name: dt_assinatura, type: date64}
-  - {name: qtd_dias_assinatura, type: int64}
-  - {name: dt_ref, type: date64}
-  - {name: id_calendario_dt_ref, type: int32}
-redshift:
-  database: dw
-  schema: xp_inc
-  table: custodia_remunerada
-  load_mode: replace_partition
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: cod_xp_assessor, type: string, only_digits: true}
+    - {name: cod_xp_cliente, type: string, only_digits: true}
+    - {name: matriz, type: string}
+    - {name: status, type: string}
+    - {name: vlr_custodia_total, type: float64}
+    - {name: vlr_custodia_remunerada, type: float64}
+    - {name: vlr_custodia_doacao, type: float64}
+    - {name: dt_assinatura, type: date64}
+    - {name: qtd_dias_assinatura, type: int64}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  s3_delay:
+    max_days_without_update: 3
+    to: [bruno.miranda@investsmart.com.br]
+    cc: [gestaodedados@investsmart.com.br, eduardo.pontes@investsmart.com.br, guilherme.guimaraes@investsmart.com.br]
+  redshift_delay:
+    sla: {days: 3}
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]
