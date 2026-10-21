@@ -49,7 +49,7 @@ bronze_to_silver:
     - {name: dt_atualizacao, source: Data_Atualização, required: false}
     - {name: segmentacao_cliente, source: Segmentação Cliente, required: false}
   - from: 2026-09-10
-    origin: {type: csv, sep: ',', encoding: UTF-8}
+    origin: {type: xlsx}
     destination: {type: csv, sep: ;, encoding: UTF-8}
     columns:
     - {name: escritorio, source: Escritório, min_length: 0, max_length: 101}

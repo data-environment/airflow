@@ -34,7 +34,7 @@ redshift:
 # ETL
 bronze_to_silver:
   versions:
-  - from: 2027-01-01
+  - from: 2026-01-01
     origin: {type: csv, sep: ',', encoding: UTF-8}
     destination: {type: csv, sep: ;, encoding: UTF-8}
     columns:
@@ -51,7 +51,7 @@ bronze_to_silver:
     - {name: vlr_net, source: NET, type: decimal}
 silver_to_gold:
   versions:
-  - from: 2027-01-01
+  - from: 2026-01-01
     enrichment:
     - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
     - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}

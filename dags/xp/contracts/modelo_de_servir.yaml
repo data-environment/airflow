@@ -39,7 +39,7 @@ bronze_to_silver:
     origin: {type: xlsx}
     destination: {type: csv, sep: ;, encoding: UTF-8}
     filter_rules:
-    - {column: Cód. Assessor, op: startswith, value: Filtros aplicados}
+    - {column: Ano Mês, op: startswith, value: Filtros aplicados}
     columns:
     - {name: cod_xp_assessor, source: Cód. Assessor, pattern: '^A?[0-9]{4,5}$'}
     - {name: nome_assessor, source: Nome Assessor, min_length: 1, max_length: 256}
@@ -62,7 +62,7 @@ bronze_to_silver:
     origin: {type: xlsx}
     destination: {type: csv, sep: ;, encoding: UTF-8}
     filter_rules:
-    - {column: Cód. Assessor, op: startswith, value: Filtros aplicados}
+    - {column: Ano Mês, op: startswith, value: Filtros aplicados}
     columns:
     - {name: cod_xp_assessor, source: Cód. Assessor, pattern: '^A?[0-9]{4,5}$'}
     - {name: nome_assessor, source: Nome Assessor, min_length: 1, max_length: 256}
