@@ -60,6 +60,7 @@ silver_to_gold:
     enrichment:
     - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
     - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    - {name: tipo_cliente, from: tipo_cliente, map: {F: PF, J: PJ}, upper: true, description: "Tipo Pessoa padronizado: F → PF, J → PJ, demais em maiúsculas (ex.: PRIVATE)"}
     schema:
     - {name: dt_captacao, type: date64}
     - {name: nucleo, type: string}

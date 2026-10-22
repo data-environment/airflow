@@ -7,6 +7,7 @@ from pandas import DataFrame, Series
 
 from include.etl.contract import (
     Contract,
+    EnrichmentColumn,
     GoldColumn,
     SilverToGoldVersion,
     file_date,
@@ -62,17 +63,30 @@ class SilverToGold:
         dt_ref = file_date(file_name)
         enrichment = {column.name: column for column in version.enrichment}
         gold = DataFrame(index=silver.index)
-        for column in version.columns:
-            name = column.name
-            try:
-                if name in enrichment:
-                    gold[name] = enrichment[name].value(dt_ref)
-                else:
-                    gold[name] = self._convert(silver[name], column)
-            except (ValueError, TypeError) as exc:
-                raise ValueError(
-                    f"Falha ao converter a coluna '{name}' para {column.type}: {exc}"
-                ) from exc
+        # Duas passadas: as colunas derivadas leem as colunas já convertidas.
+        for derived in (False, True):
+            for column in version.columns:
+                name = column.name
+                spec = enrichment.get(name)
+                if (spec is not None and not spec.from_file_date) != derived:
+                    continue
+                try:
+                    if spec is None:
+                        gold[name] = self._convert(silver[name], column)
+                    elif spec.from_file_date:
+                        gold[name] = spec.value(dt_ref)
+                    else:
+                        source = (
+                            self._convert(silver[name], column)
+                            if spec.source == name
+                            else gold[spec.source]
+                        )
+                        gold[name] = self._derive(gold, spec, source)
+                except (ValueError, TypeError) as exc:
+                    raise ValueError(
+                        f"Falha ao converter a coluna '{name}' para {column.type}: {exc}"
+                    ) from exc
+        gold = gold[[column.name for column in version.columns]]
         return gold.reset_index(drop=True)
 
     def arrow_schema(self, file_name: str) -> pa.Schema:
@@ -88,7 +102,12 @@ class SilverToGold:
 
     @staticmethod
     def _check_columns(silver: DataFrame, version: SilverToGoldVersion) -> None:
-        enriched = {column.name for column in version.enrichment}
+        # Enriquecimento que transforma a própria coluna também a lê da silver.
+        enriched = {
+            column.name
+            for column in version.enrichment
+            if column.source != column.name
+        }
         missing = [
             column.name
             for column in version.columns
@@ -99,6 +118,20 @@ class SilverToGold:
                 f"Colunas do schema da gold ausentes na silver: {missing}. "
                 f"Colunas da silver: {list(silver.columns)}"
             )
+
+    @staticmethod
+    def _derive(gold: DataFrame, spec: EnrichmentColumn, values: Series) -> Series:
+        """`values` (a coluna `spec.source`) com `map`, `upper` e
+        `negative_when` (-|valor| nas linhas da condição) aplicados."""
+        if spec.mapping:
+            values = values.replace(spec.mapping)
+        if spec.upper:
+            values = values.str.upper()
+        if spec.negative_when:
+            condition = spec.negative_when
+            mask = gold[condition.column] == condition.equals
+            values = values.where(~mask, -values.abs())
+        return values
 
     @classmethod
     def _convert(cls, values: Series, column: GoldColumn) -> Series:

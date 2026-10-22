@@ -124,15 +124,50 @@ class GoldColumn(_Spec):
         return value
 
 
+FILE_DATE_SOURCES = ("file_date", "dt_ref")
+
+
+class Condition(_Spec):
+    """Linhas em que `column` (coluna da gold) é igual a `equals`."""
+
+    column: str
+    equals: str
+
+
 class EnrichmentColumn(_Spec):
-    """Coluna da gold que não vem da silver: a data de referência do arquivo
-    (`file_date` e `dt_ref` são a mesma data), como data ou, com `format`,
-    como inteiro (ex.: `%Y%m%d` → 20260115)."""
+    """Coluna da gold que não vem da silver.
+
+    - `from: file_date` (ou `dt_ref`, a mesma data): data de referência do
+      arquivo, como data ou, com `format`, como inteiro (ex.: `%Y%m%d` →
+      20260115).
+    - `from: <coluna>`: cópia de uma coluna da gold (pode ser a própria
+      coluna, para transformá-la). Opções, aplicadas nesta ordem:
+      - `map`: troca valores (ex.: `{F: PF}`); os demais ficam como estão;
+      - `upper`: converte para maiúsculas;
+      - `negative_when`: o valor fica negativo nas linhas da condição (ex.:
+        débito com valor positivo vira negativo)."""
 
     name: str
-    source: Literal["file_date", "dt_ref"] = Field(alias="from")
+    source: str = Field(alias="from")
     format: str | None = None
+    mapping: dict[str, str] = Field(default={}, alias="map")
+    upper: bool = False
+    negative_when: Condition | None = None
     description: str | None = None
+
+    @property
+    def from_file_date(self) -> bool:
+        return self.source in FILE_DATE_SOURCES
+
+    @model_validator(mode="after")
+    def _options_match_source(self) -> "EnrichmentColumn":
+        if self.from_file_date and (self.negative_when or self.mapping or self.upper):
+            raise ValueError(
+                "`map`, `upper` e `negative_when` só valem com `from: <coluna>`"
+            )
+        if not self.from_file_date and self.format:
+            raise ValueError("`format` só vale com `from: file_date` ou `dt_ref`")
+        return self
 
     def value(self, dt_ref: date) -> date | int:
         if self.format:
@@ -153,6 +188,25 @@ class SilverToGoldVersion(_Spec):
         ]
         if missing:
             raise ValueError(f"colunas de `enrichment` fora do `schema`: {missing}")
+
+        # Coluna derivada lê colunas que vêm da silver (ou ela mesma), não
+        # outras derivadas.
+        enriched = {column.name for column in self.enrichment}
+        for column in self.enrichment:
+            if column.from_file_date:
+                continue
+            used = [column.source]
+            if column.negative_when:
+                used.append(column.negative_when.column)
+            invalid = [
+                name
+                for name in used
+                if name not in names or (name in enriched and name != column.name)
+            ]
+            if invalid:
+                raise ValueError(
+                    f"`{column.name}` usa colunas que não vêm da silver: {invalid}"
+                )
         return self
 
 

@@ -6,7 +6,7 @@ description: "Posição de clientes XP em carteiras automatizadas, por cliente/a
 business_justification: "A definir com área de negócio."
 tags:
 - carteira_automatizada
-schedule: 33 22 * * 1-5
+sensor_interval: 7200
 retries: 1
 # Source and Extraction
 source:

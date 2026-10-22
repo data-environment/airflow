@@ -6,7 +6,7 @@ description: "Custódia de clientes XP por assessor/cliente/matriz: custódia to
 business_justification: "A definir com área de negócio."
 tags:
 - custodia_remunerada
-schedule: 36 22 * * 1-5
+sensor_interval: 7200
 retries: 1
 # Source and Extraction
 source:

@@ -6,7 +6,7 @@ description: "Cadastro de eventos de captação (movimentação financeira) por 
 business_justification: "Retenção de clientes; parabenizar assessores; avaliação em contexto de meta; avaliação de conta nova / conta antiga; definição de incentivos de captação."
 tags:
 - captacao
-schedule: 0 23 * * 1-5
+sensor_interval: 7200
 retries: 1
 # Source and Extraction
 source:
@@ -67,6 +67,7 @@ silver_to_gold:
     enrichment:
     - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
     - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    - {name: vlr_captacao_ajustado, from: vlr_captacao, negative_when: {column: aux, equals: D}, description: "vlr_captacao com sinal negativo nos débitos (aux = D)"}
     schema:
     - {name: escritorio, type: string}
     - {name: dt_captacao, type: date64}
@@ -75,6 +76,7 @@ silver_to_gold:
     - {name: tipo_captacao, type: string}
     - {name: aux, type: string}
     - {name: vlr_captacao, type: float64}
+    - {name: vlr_captacao_ajustado, type: float64}
     - {name: dt_atualizacao, type: date64}
     - {name: segmentacao_cliente, type: string}
     - {name: dt_ref, type: date64}
