@@ -6,7 +6,7 @@ description: "Cadastro de eventos de captação via TED (entrada/saída de recur
 business_justification: "Notificação eficiente de transações para assessores; atualização de captação em bases diárias, antes do fechamento oficial; acompanhamento da velocidade de TEDs."
 tags:
 - captacao_parcial
-schedule: 3 23 * * 1-5
+sensor_interval: 7200
 retries: 1
 # Source and Extraction
 source:
