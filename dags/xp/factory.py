@@ -63,7 +63,8 @@ def create_dag(spec: Contract) -> DAG:
             )
 
         with TaskGroup("silver_to_gold"):
-            silver, gold = list_silver_files(contract), list_gold_files(contract)
+            silver = list_silver_files.override(trigger_rule="none_failed")(contract)
+            gold = list_gold_files.override(trigger_rule="none_failed")(contract)
             transformed >> [silver, gold]
             pending = compare_silver_and_gold(silver, gold)
             transformed = etl_silver_to_gold.partial(contract=contract).expand(
@@ -71,7 +72,10 @@ def create_dag(spec: Contract) -> DAG:
             )
 
         with TaskGroup("gold_to_redshift"):
-            gold, redshift = list_gold_files(contract), list_redshift_files(contract)
+            gold = list_gold_files.override(trigger_rule="none_failed")(contract)
+            redshift = list_redshift_files.override(trigger_rule="none_failed")(
+                contract
+            )
             transformed >> [gold, redshift]
             pending = compare_gold_and_redshift(gold, redshift)
             etl_gold_to_redshift.partial(contract=contract).expand(record=pending)
