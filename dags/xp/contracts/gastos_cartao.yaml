@@ -1,13 +1,36 @@
+# General
 pipeline: gastos_cartao
-description: 'XP gastos cartão: bronze → silver → gold → Redshift.'
+display_name: "Gastos Cartão"
 owner: dw
+description: "Cadastro de contas XP por escritório com indicadores de uso do cartão: status de pagamento de boleto/fatura, chave Pix, principalidade, segmento, faixa de AUC e faixas de gasto no cartão nos últimos 3 meses (M0, M-1, M-2)."
+business_justification: "A definir com área de negócio."
 tags:
 - gastos_cartao
 schedule: 39 22 * * 1-5
 retries: 1
+# Source and Extraction
+source:
+  description: "Arquivo XLSX de gastos com cartão exportado da XP."
+  owner: "XP"
+  contact: "XP"
+extraction:
+  description: "Arquivo XLSX exportado manualmente da XP pelo time de Performance, enviado ao SmartCheck para validação. Cada arquivo é uma foto da data de referência (dt_ref)."
+  capture_method: manual
+  contact: "performance.best@investsmart.com.br"
+  reprocessing_window_days: 91
+# AWS
 s3:
   path: investsmart/xp_inc/gastos_cartao
   file: gastos_cartao
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: xp_inc
+  table: gastos_cartao
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
 bronze_to_silver:
   versions:
   - from: 2020-01-01
@@ -33,27 +56,40 @@ bronze_to_silver:
     - {name: faixa_pagamento_m1, source: Faixa Pagamento M-1, required: false, min_length: 2, max_length: 64}
     - {name: faixa_pagamento_m2, source: Faixa Pagamento M-2, required: false, min_length: 2, max_length: 64}
 silver_to_gold:
-  schema:
-  - {name: cod_xp_conta, type: string, only_digits: true}
-  - {name: cod_xp_escritorio, type: string, only_digits: true}
-  - {name: escritorio, type: string}
-  - {name: uso_conta, type: string}
-  - {name: status_corretora, type: string}
-  - {name: elegivel_turbo_conta, type: string}
-  - {name: faixa_auc, type: string}
-  - {name: portabilidade, type: string}
-  - {name: status_pgto_boleto, type: string}
-  - {name: status_pgto_fatura, type: string}
-  - {name: status_chave_pix, type: string}
-  - {name: principalidade_conta, type: string}
-  - {name: segmento, type: string}
-  - {name: faixa_pagamento_m0, type: string}
-  - {name: faixa_pagamento_m1, type: string}
-  - {name: faixa_pagamento_m2, type: string}
-  - {name: dt_ref, type: date64}
-  - {name: id_calendario_dt_ref, type: int32}
-redshift:
-  database: dw
-  schema: xp_inc
-  table: gastos_cartao
-  load_mode: replace_partition
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: cod_xp_conta, type: string, only_digits: true}
+    - {name: cod_xp_escritorio, type: string, only_digits: true}
+    - {name: escritorio, type: string}
+    - {name: uso_conta, type: string}
+    - {name: status_corretora, type: string}
+    - {name: elegivel_turbo_conta, type: string}
+    - {name: faixa_auc, type: string}
+    - {name: portabilidade, type: string}
+    - {name: status_pgto_boleto, type: string}
+    - {name: status_pgto_fatura, type: string}
+    - {name: status_chave_pix, type: string}
+    - {name: principalidade_conta, type: string}
+    - {name: segmento, type: string}
+    - {name: faixa_pagamento_m0, type: string}
+    - {name: faixa_pagamento_m1, type: string}
+    - {name: faixa_pagamento_m2, type: string}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  s3_delay:
+    max_days_without_update: 3
+    to: [bruno.miranda@investsmart.com.br]
+    cc: [gestaodedados@investsmart.com.br, eduardo.pontes@investsmart.com.br, guilherme.guimaraes@investsmart.com.br]
+  redshift_delay:
+    sla: {days: 3}
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]

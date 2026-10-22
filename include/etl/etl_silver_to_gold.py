@@ -5,7 +5,12 @@ import pandas as pd
 import pyarrow as pa
 from pandas import DataFrame, Series
 
-from include.etl.contract import Contract, GoldColumn, file_date
+from include.etl.contract import (
+    Contract,
+    GoldColumn,
+    SilverToGoldVersion,
+    file_date,
+)
 
 if TYPE_CHECKING:
     from include.etl.layer import Layer
@@ -14,12 +19,9 @@ logger = logging.getLogger(__name__)
 
 
 class SilverToGold:
-    DERIVED_COLUMNS = frozenset({"dt_ref", "id_calendario_dt_ref"})
-
     def __init__(self, contract: Contract, layer: "Layer | None" = None):
         self.contract = contract
         self.layer = layer or contract.layer()
-        self.columns = contract.silver_to_gold.columns
 
     def run(self, file_name: str, silver_keys: list[str]) -> dict:
         """Lê e concatena os arquivos da silver da data (um por CNPJ/partição,
@@ -40,7 +42,7 @@ class SilverToGold:
         gold = self.transform(silver, file_name)
 
         prefix = self.layer.gold_prefix()
-        Parquet(s3, schema=self.arrow_schema()).put(
+        Parquet(s3, schema=self.arrow_schema(file_name)).put(
             gold, settings.bucket_gold, prefix, file_name
         )
         gold_key = f"{prefix}/{file_name}.parquet"
@@ -54,17 +56,17 @@ class SilverToGold:
 
     def transform(self, silver: DataFrame, file_name: str) -> DataFrame:
         """Converte a silver (lida com dtype=str) para as colunas e tipos da gold."""
-        self._check_columns(silver)
+        version = self._version(file_name)
+        self._check_columns(silver, version)
 
         dt_ref = file_date(file_name)
+        enrichment = {column.name: column for column in version.enrichment}
         gold = DataFrame(index=silver.index)
-        for column in self.columns:
+        for column in version.columns:
             name = column.name
             try:
-                if name == "dt_ref":
-                    gold[name] = dt_ref
-                elif name == "id_calendario_dt_ref":
-                    gold[name] = int(dt_ref.strftime("%Y%m%d"))
+                if name in enrichment:
+                    gold[name] = enrichment[name].value(dt_ref)
                 else:
                     gold[name] = self._convert(silver[name], column)
             except (ValueError, TypeError) as exc:
@@ -73,17 +75,24 @@ class SilverToGold:
                 ) from exc
         return gold.reset_index(drop=True)
 
-    def arrow_schema(self) -> pa.Schema:
+    def arrow_schema(self, file_name: str) -> pa.Schema:
         return pa.schema(
-            [(column.name, pa.type_for_alias(column.type)) for column in self.columns]
+            [
+                (column.name, pa.type_for_alias(column.type))
+                for column in self._version(file_name).columns
+            ]
         )
 
-    def _check_columns(self, silver: DataFrame) -> None:
+    def _version(self, file_name: str) -> SilverToGoldVersion:
+        return self.contract.silver_to_gold.version_for(file_name)
+
+    @staticmethod
+    def _check_columns(silver: DataFrame, version: SilverToGoldVersion) -> None:
+        enriched = {column.name for column in version.enrichment}
         missing = [
             column.name
-            for column in self.columns
-            if column.name not in self.DERIVED_COLUMNS
-            and column.name not in silver.columns
+            for column in version.columns
+            if column.name not in enriched and column.name not in silver.columns
         ]
         if missing:
             raise ValueError(

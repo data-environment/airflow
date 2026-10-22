@@ -1,20 +1,45 @@
+# General
 pipeline: modelo_de_servir
-description: 'XP modelo de servir: bronze → silver → gold → Redshift.'
+display_name: "Modelo de Servir"
 owner: dw
+description: "Snapshot periódico, por cliente e assessor, do 'modelo de servir' aplicado pela XP — modelo de atendimento, valor de AuC, flags de adesão a produtos/serviços (Financial Planning, Open Investment, XPerformance, etc.), índice consolidado do modelo de servir e prazos (em dias) até o vencimento de cada uma dessas frentes."
+business_justification: "Não confirmado — pendente de levantamento com a área de negócio."
 tags:
 - modelo_de_servir
 schedule: 9 22 * * 1-5
 retries: 1
+# Source and Extraction
+source:
+  description: "Arquivo XLSX extraído do Hub da XP."
+  disponibilization_sla: {days: 2}
+  owner: "Hub da XP"
+  contact: "Hub da XP"
+extraction:
+  description: "Arquivo Excel extraído manualmente do Hub da XP pelo time de Performance, enviado ao SmartCheck para validação. Periodicidade diária, de segunda a sexta; consumido como snapshot mensal, coletado a cada 3 dias no máximo."
+  capture_method: manual
+  capture_sla: {days: 3}
+  contact: "performance.best@investsmart.com.br"
+  reprocessing_window_days: 91
+# AWS
 s3:
   path: investsmart/xp_inc/modelo_de_servir
   file: modelo_de_servir
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: xp_inc
+  table: modelo_de_servir
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
 bronze_to_silver:
   versions:
   - from: 2020-01-01
     origin: {type: xlsx}
     destination: {type: csv, sep: ;, encoding: UTF-8}
     filter_rules:
-    - {column: Cód. Assessor, op: startswith, value: Filtros aplicados}
+    - {column: Ano Mês, op: startswith, value: Filtros aplicados}
     columns:
     - {name: cod_xp_assessor, source: Cód. Assessor, pattern: '^A?[0-9]{4,5}$'}
     - {name: nome_assessor, source: Nome Assessor, min_length: 1, max_length: 256}
@@ -37,7 +62,7 @@ bronze_to_silver:
     origin: {type: xlsx}
     destination: {type: csv, sep: ;, encoding: UTF-8}
     filter_rules:
-    - {column: Cód. Assessor, op: startswith, value: Filtros aplicados}
+    - {column: Ano Mês, op: startswith, value: Filtros aplicados}
     columns:
     - {name: cod_xp_assessor, source: Cód. Assessor, pattern: '^A?[0-9]{4,5}$'}
     - {name: nome_assessor, source: Nome Assessor, min_length: 1, max_length: 256}
@@ -57,28 +82,41 @@ bronze_to_silver:
     - {name: qtd_dias_vencimento_xperformance, source: Dias até Vencimento XPerformance, type: decimal, required: false}
     - {name: qtd_dias_vencimento_ativ_critica_tratada, source: Dias até Vencimento Ativ. Crítica Tratada, type: decimal, required: false}
 silver_to_gold:
-  schema:
-  - {name: cod_xp_assessor, type: string, only_digits: true}
-  - {name: nome_assessor, type: string}
-  - {name: cod_xp_cliente, type: string}
-  - {name: modelo, type: string}
-  - {name: vlr_auc, type: float64}
-  - {name: flag_financial_planning, type: bool}
-  - {name: flag_open_investment, type: bool}
-  - {name: flag_conta_acessada, type: bool}
-  - {name: flag_ordem_enviada, type: bool}
-  - {name: flag_xperformance, type: bool}
-  - {name: flag_ativ_relacionamento, type: bool}
-  - {name: indice_modelo_servir, type: int32}
-  - {name: qtd_dias_vencimento_fp, type: int32}
-  - {name: qtd_dias_vencimento_conta_acessada, type: int32}
-  - {name: qtd_dias_vencimento_ordem_enviada, type: int32}
-  - {name: qtd_dias_vencimento_xperformance, type: int32}
-  - {name: qtd_dias_vencimento_ativ_critica_tratada, type: int32}
-  - {name: dt_ref, type: date64}
-  - {name: id_calendario_dt_ref, type: int32}
-redshift:
-  database: dw
-  schema: xp_inc
-  table: modelo_de_servir
-  load_mode: replace_partition
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: cod_xp_assessor, type: string, only_digits: true}
+    - {name: nome_assessor, type: string}
+    - {name: cod_xp_cliente, type: string}
+    - {name: modelo, type: string}
+    - {name: vlr_auc, type: float64}
+    - {name: flag_financial_planning, type: bool}
+    - {name: flag_open_investment, type: bool}
+    - {name: flag_conta_acessada, type: bool}
+    - {name: flag_ordem_enviada, type: bool}
+    - {name: flag_xperformance, type: bool}
+    - {name: flag_ativ_relacionamento, type: bool}
+    - {name: indice_modelo_servir, type: int32}
+    - {name: qtd_dias_vencimento_fp, type: int32}
+    - {name: qtd_dias_vencimento_conta_acessada, type: int32}
+    - {name: qtd_dias_vencimento_ordem_enviada, type: int32}
+    - {name: qtd_dias_vencimento_xperformance, type: int32}
+    - {name: qtd_dias_vencimento_ativ_critica_tratada, type: int32}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  s3_delay:
+    max_days_without_update: 3
+    to: [bruno.miranda@investsmart.com.br]
+    cc: [gestaodedados@investsmart.com.br, eduardo.pontes@investsmart.com.br, guilherme.guimaraes@investsmart.com.br]
+  redshift_delay:
+    sla: {days: 1}
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]

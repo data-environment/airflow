@@ -1,13 +1,38 @@
+# General
 pipeline: saldo_conta_digital
-description: 'XP saldo conta digital: bronze → silver → gold → Redshift.'
+display_name: "Saldo Conta Digital"
 owner: dw
+description: "Relatório da XP com o saldo da conta digital dos clientes por conta e assessor (AAI), incluindo modalidade, segmento e comparativos de saldo/prazo entre a XP e instituições concorrentes."
+business_justification: "A definir com área de negócio."
 tags:
 - saldo_conta_digital
 schedule: 52 22 * * 1-5
 retries: 1
+# Source and Extraction
+source:
+  description: "Arquivo XLSX extraído do Hub da XP."
+  disponibilization_sla: {days: 2}
+  owner: "XP"
+  contact: "XP"
+extraction:
+  description: "Arquivo XLSX coletado manualmente pelo time de Performance no portal da XP, enviado ao SmartCheck para validação. Snapshot mensal coletado a cada 3 dias no máximo."
+  capture_method: manual
+  capture_sla: {days: 4}
+  contact: "performance.best@investsmart.com.br"
+  reprocessing_window_days: 91
+# AWS
 s3:
   path: investsmart/xp_inc/saldo_conta_digital
   file: saldo_conta_digital
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: xp_inc
+  table: saldo_conta_digital
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
 bronze_to_silver:
   versions:
   - from: 2020-01-01
@@ -25,19 +50,32 @@ bronze_to_silver:
     - {name: saldo_xp, source: Saldo XP}
     - {name: prazo_saldo_xp, source: Prazo Saldo XP, required: false}
 silver_to_gold:
-  schema:
-  - {name: cod_conta, type: string}
-  - {name: cod_xp_assessor, type: string}
-  - {name: modalidade, type: string}
-  - {name: segmento, type: string}
-  - {name: saldo_concorrente, type: string}
-  - {name: prazo_saldo_mercado, type: string}
-  - {name: saldo_xp, type: string}
-  - {name: prazo_saldo_xp, type: string}
-  - {name: dt_ref, type: date64}
-  - {name: id_calendario_dt_ref, type: int32}
-redshift:
-  database: dw
-  schema: xp_inc
-  table: saldo_conta_digital
-  load_mode: replace_partition
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: cod_conta, type: string}
+    - {name: cod_xp_assessor, type: string}
+    - {name: modalidade, type: string}
+    - {name: segmento, type: string}
+    - {name: saldo_concorrente, type: string}
+    - {name: prazo_saldo_mercado, type: string}
+    - {name: saldo_xp, type: string}
+    - {name: prazo_saldo_xp, type: string}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  s3_delay:
+    max_days_without_update: 3
+    to: [bruno.miranda@investsmart.com.br]
+    cc: [gestaodedados@investsmart.com.br, eduardo.pontes@investsmart.com.br, guilherme.guimaraes@investsmart.com.br]
+  redshift_delay:
+    sla: {days: 3}
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]

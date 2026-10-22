@@ -1,15 +1,38 @@
+# General
 pipeline: diversificacao_rv
-description: 'XP diversificação RV: bronze (CNPJ e produto) → silver → gold → Redshift.'
+display_name: "Diversificação RV"
 owner: dw
+description: "Posição diária de ativos de renda variável (ações) em custódia por conta de cliente XP, incluindo quantidade, valor de AuC, preço médio, valor de abertura e variação, classificados por produto, setor e subsetor. Arquivo XLSX fornecido pela XP via SmartCheck, enviado em partições pela coluna 'Produto' (Ação e Outros), usado para acompanhar a diversificação das carteiras de RV por cliente, assessor e matriz."
+business_justification: "Permite à Invest Smart monitorar a exposição e diversificação das carteiras de renda variável dos clientes (por ativo, setor, subsetor e perfil de suitability), subsidiando acompanhamento de assessores/matrizes e identificação de concentração de risco."
 tags:
 - diversificacao_rv
 schedule: 0 22 * * 1-5
 retries: 1
+# Source and Extraction
+source:
+  description: "Smartcheck, XP Inc."
+  disponibilization_sla: {days: 2}
+  owner: "XP Inc."
+  contact: "XP Inc."
+extraction:
+  description: "Arquivo XLSX fornecido pela XP via SmartCheck, fracionado em partições pela coluna 'Produto' (Ação e Outros). Estratégia de ingestão: incremental (Delta) com comparação de arquivos entre camadas S3."
+  capture_method: manual
+  capture_sla: {days: 4}
+  contact: "XP Inc."
+  reprocessing_window_days: 91
+# AWS
 s3:
   path: investsmart/xp_inc/diversificacao_rv
   file: diversificacao_rv
   cnpj: true
   partitioned: true
+redshift:
+  database: dw
+  schema: xp_inc
+  table: diversificacao_rv
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
 bronze_to_silver:
   versions:
   - from: 2020-01-01
@@ -33,25 +56,38 @@ bronze_to_silver:
     - {name: setor, source: Setor, required: false}
     - {name: subsetor, source: Subsetor, required: false}
 silver_to_gold:
-  schema:
-  - {name: cod_xp_cliente, type: string}
-  - {name: suitability, type: string}
-  - {name: cod_xp_matriz, type: string}
-  - {name: cod_xp_assessor, type: string, only_digits: true}
-  - {name: nome_matriz, type: string}
-  - {name: cod_ativo, type: string}
-  - {name: qtd_ativo, type: float64}
-  - {name: vlr_auc, type: float64}
-  - {name: vlr_preco_medio, type: float64}
-  - {name: vlr_abertura, type: float64}
-  - {name: vlr_variacao, type: float64}
-  - {name: produto, type: string}
-  - {name: setor, type: string}
-  - {name: subsetor, type: string}
-  - {name: dt_ref, type: date64}
-  - {name: id_calendario_dt_ref, type: int32}
-redshift:
-  database: dw
-  schema: xp_inc
-  table: diversificacao_rv
-  load_mode: replace_partition
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: cod_xp_cliente, type: string}
+    - {name: suitability, type: string}
+    - {name: cod_xp_matriz, type: string}
+    - {name: cod_xp_assessor, type: string, only_digits: true}
+    - {name: nome_matriz, type: string}
+    - {name: cod_ativo, type: string}
+    - {name: qtd_ativo, type: float64}
+    - {name: vlr_auc, type: float64}
+    - {name: vlr_preco_medio, type: float64}
+    - {name: vlr_abertura, type: float64}
+    - {name: vlr_variacao, type: float64}
+    - {name: produto, type: string}
+    - {name: setor, type: string}
+    - {name: subsetor, type: string}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  s3_delay:
+    max_days_without_update: 3
+    to: [bruno.miranda@investsmart.com.br]
+    cc: [gestaodedados@investsmart.com.br, eduardo.pontes@investsmart.com.br, guilherme.guimaraes@investsmart.com.br]
+  redshift_delay:
+    sla: {days: 1}
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]

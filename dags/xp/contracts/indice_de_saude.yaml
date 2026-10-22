@@ -1,13 +1,38 @@
+# General
 pipeline: indice_de_saude
-description: 'XP índice de saúde: bronze → silver → gold → Redshift.'
+display_name: "Índice de Saúde"
 owner: dw
+description: "Relatório por conta/cliente XP com os sub-índices que compõem o Índice de Saúde do Cliente: pontuação de aportes, pontuação de variação de AuC, pontuação de rentabilidade, pontuação de cross-sell, pontuação de aderência e o índice de saúde consolidado, além de métricas percentuais associadas (variação de AuC, rentabilidade relativa ao CDI, aderência)."
+business_justification: "A definir com área de negócio."
 tags:
 - indice_de_saude
 schedule: 6 22 * * 1-5
 retries: 1
+# Source and Extraction
+source:
+  description: "Arquivo XLSX extraído do Hub da XP."
+  disponibilization_sla: {days: 2}
+  owner: "XP"
+  contact: "XP"
+extraction:
+  description: "Arquivo XLSX extraído manualmente do Hub da XP pelo time de Performance, enviado ao SmartCheck para validação. Periodicidade diária, de segunda a sexta; consumido como snapshot mensal, coletado a cada 3 dias no máximo."
+  capture_method: manual
+  capture_sla: {days: 3}
+  contact: "performance.best@investsmart.com.br"
+  reprocessing_window_days: 91
+# AWS
 s3:
   path: investsmart/xp_inc/indice_de_saude
   file: indice_de_saude
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: xp_inc
+  table: indice_de_saude
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
 bronze_to_silver:
   versions:
   - from: 2020-01-01
@@ -55,27 +80,40 @@ bronze_to_silver:
     - {name: qtd_produtos_cross_sell, source: Quantidade de Produtos Cross-Sell, type: decimal, required: false}
     - {name: pct_aderencia, source: Aderência}
 silver_to_gold:
-  schema:
-  - {name: cod_xp_assessor, type: string, only_digits: true}
-  - {name: nome_assessor, type: string}
-  - {name: cod_xp_cliente, type: string}
-  - {name: modelo, type: string}
-  - {name: vlr_auc, type: float64}
-  - {name: pontuacao_aportes, type: float64}
-  - {name: pontuacao_variacao_auc, type: float64}
-  - {name: pontuacao_rentabilidade, type: float64}
-  - {name: pontuacao_cross_sell, type: float64}
-  - {name: pontuacao_aderencia, type: float64}
-  - {name: indice_saude_cliente, type: float64}
-  - {name: qtd_meses_aporte_u12m, type: int32}
-  - {name: pct_variacao_auc, type: string}
-  - {name: pct_rentabilidade_bruta_relativa_cdi, type: float64}
-  - {name: qtd_produtos_cross_sell, type: int32}
-  - {name: pct_aderencia, type: string}
-  - {name: dt_ref, type: date64}
-  - {name: id_calendario_dt_ref, type: int32}
-redshift:
-  database: dw
-  schema: xp_inc
-  table: indice_de_saude
-  load_mode: replace_partition
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: cod_xp_assessor, type: string, only_digits: true}
+    - {name: nome_assessor, type: string}
+    - {name: cod_xp_cliente, type: string}
+    - {name: modelo, type: string}
+    - {name: vlr_auc, type: float64}
+    - {name: pontuacao_aportes, type: float64}
+    - {name: pontuacao_variacao_auc, type: float64}
+    - {name: pontuacao_rentabilidade, type: float64}
+    - {name: pontuacao_cross_sell, type: float64}
+    - {name: pontuacao_aderencia, type: float64}
+    - {name: indice_saude_cliente, type: float64}
+    - {name: qtd_meses_aporte_u12m, type: int32}
+    - {name: pct_variacao_auc, type: string}
+    - {name: pct_rentabilidade_bruta_relativa_cdi, type: float64}
+    - {name: qtd_produtos_cross_sell, type: int32}
+    - {name: pct_aderencia, type: string}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  s3_delay:
+    max_days_without_update: 3
+    to: [bruno.miranda@investsmart.com.br]
+    cc: [gestaodedados@investsmart.com.br, eduardo.pontes@investsmart.com.br, guilherme.guimaraes@investsmart.com.br]
+  redshift_delay:
+    sla: {days: 1}
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]
