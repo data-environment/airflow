@@ -75,12 +75,12 @@ silver_to_gold:
 quality: []
 alerts:
   s3_delay:
-    max_days_without_update: 4
-    to: [performance.best@investsmart.com.br]
-    cc: [performance.best@investsmart.com.br]
+    max_days_without_update: 3
+    to: [bruno.miranda@investsmart.com.br]
+    cc: [gestaodedados@investsmart.com.br, eduardo.pontes@investsmart.com.br, guilherme.guimaraes@investsmart.com.br]
   redshift_delay:
     sla: {days: 3}
-    to: [performance.best@investsmart.com.br]
-    cc: [performance.best@investsmart.com.br]
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
   job_failure:
     to: [slack]

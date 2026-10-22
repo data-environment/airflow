@@ -1,11 +1,23 @@
+import logging
 import re
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+import yaml
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 if TYPE_CHECKING:
     from include.etl.layer import Layer
+
+logger = logging.getLogger(__name__)
 
 
 def file_date(file_name: str) -> date:
@@ -301,3 +313,16 @@ class Contract(_Spec):
         """Formato serializável em JSON, para `partial(contract=...)`.
         Volta a ser `Contract` com `Contract.model_validate`."""
         return self.model_dump(mode="json", by_alias=True)
+
+
+def load_contracts(directory: Path) -> list[Contract]:
+    """Contratos válidos de `directory/*.yaml`; os inválidos são logados e
+    ignorados."""
+    contracts = []
+    for path in sorted(directory.glob("*.yaml")):
+        try:
+            raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+            contracts.append(Contract.model_validate(raw))
+        except (yaml.YAMLError, ValidationError) as exc:
+            logger.error(f"Contrato inválido, ignorado: {path.name}: {exc}")
+    return contracts

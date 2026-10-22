@@ -2,11 +2,9 @@ import logging
 from pathlib import Path
 
 import pendulum
-import yaml
 from airflow.sdk import DAG, TaskGroup
-from pydantic import ValidationError
 
-from include.etl.contract import Contract
+from include.etl.contract import Contract, load_contracts
 from include.etl.tasks import (
     compare_bronze_and_silver,
     compare_gold_and_redshift,
@@ -25,17 +23,6 @@ logger = logging.getLogger(__name__)
 
 CONTRACTS_DIR = Path(__file__).parent / "contracts"
 START_DATE = pendulum.datetime(2026, 1, 1, tz="America/Sao_Paulo")
-
-
-def load_contracts() -> list[Contract]:
-    contracts = []
-    for path in sorted(CONTRACTS_DIR.glob("*.yaml")):
-        try:
-            raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-            contracts.append(Contract.model_validate(raw))
-        except (yaml.YAMLError, ValidationError) as exc:
-            logger.error(f"Contrato inválido, DAG não criada: {path.name}: {exc}")
-    return contracts
 
 
 def create_dag(spec: Contract) -> DAG:
@@ -83,7 +70,7 @@ def create_dag(spec: Contract) -> DAG:
     return dag
 
 
-for _contract in load_contracts():
+for _contract in load_contracts(CONTRACTS_DIR):
     try:
         create_dag(_contract)
     except Exception as exc:

@@ -51,6 +51,8 @@ class SlackSettings:
 @dataclass
 class EtlSettings:
     environment: str = os.getenv("ENVIRONMENT", "dev")
+    # Fora de prod, os emails de auditoria vão só para este endereço
+    dev_recipient: str = os.getenv("DEV_RECIPIENT")
 
     bucket_bronze: str = os.getenv("S3_BUCKET_BRONZE")
     bucket_silver: str = os.getenv("S3_BUCKET_SILVER")
