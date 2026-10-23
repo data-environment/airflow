@@ -1,0 +1,95 @@
+# General
+pipeline: bs_seguro
+display_name: "BeSmart Seguro — Produção (comissões)"
+owner: dw
+description: "Arquivo de produção de BeSmart Seguro, montado pela área de Comissões e enviado pelo SmartCheck, com as comissões de seguros."
+business_justification: "O dado é fornecido ao BI, com atualização diária, e também ao Financeiro, pelos modelos fin_prod_* do dm_financeiro."
+tags:
+- bs_seguro
+schedule: 0 22 * * *
+retries: 1
+# Source and Extraction
+source:
+  description: "Área de Comissões: arquivo de produção bs_seguro, montado pela área e enviado pelo SmartCheck."
+  owner: "Comissões (área dentro do Financeiro)"
+  contact: "pedro.dantas@investsmart.com.br"
+extraction:
+  description: "Arquivo enviado pela área de Comissões pelo SmartCheck, com disponibilização até as 03:00."
+  capture_method: manual
+  contact: "pedro.dantas@investsmart.com.br"
+# AWS
+s3:
+  path: best/producao/besmart/seguro
+  file: bs_seguro
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: producao
+  table: bs_seguro
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ';', encoding: UTF-8}
+    filter_rules:
+    - {column: "SEGMENTO ", op: equals, value: CONSORCIO}
+    columns:
+    - {name: dt_producao, source: "DATA DE CRÉDITO"}
+    - {name: nome_cliente, source: "CLIENTE ", required: false}
+    - {name: sigla, source: "SIGLA", required: false}
+    - {name: nome_assessor, source: "ASSESSOR", required: false}
+    - {name: seguradora, source: "SEGURADORA", required: false}
+    - {name: tipo_produto, source: "PRODUTO", required: false}
+    - {name: segmento_seguro, source: "SEGMENTO ", required: false}
+    - {name: qtd_parcela, source: "PARCELA", required: false}
+    - {name: vlr_bruto_operacao, source: "VALOR", type: decimal, required: false}
+    - {name: pct_repasse, source: "% DE REPASSE", type: decimal, required: false}
+    - {name: vlr_comissao_bruta, source: "COMISSÃO BK", type: decimal, required: false}
+    - {name: pct_irf, source: "%IRF - FONTE", type: decimal, required: false}
+    - {name: vlr_irf, source: "VALOR DO IRF", type: decimal, required: false}
+    - {name: pct_iss, source: "%ISS - FONTE", type: decimal, required: false}
+    - {name: vlr_iss, source: "VALOR DO ISS", type: decimal, required: false}
+    - {name: vlr_comissao_liquida, source: "COMISSÃO LIQ", type: decimal, required: false}
+    - {name: num_contrato, source: "DOCUMENTO", required: false}
+    - {name: id_fiscal, source: "CPF", required: false}
+    - {name: cnpj_pagamento, source: "CNPJ", required: false}
+silver_to_gold:
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: dt_producao, type: date64}
+    - {name: nome_cliente, type: string}
+    - {name: sigla, type: string}
+    - {name: nome_assessor, type: string}
+    - {name: seguradora, type: string}
+    - {name: tipo_produto, type: string}
+    - {name: segmento_seguro, type: string}
+    - {name: qtd_parcela, type: int32}
+    - {name: vlr_bruto_operacao, type: float64}
+    - {name: pct_repasse, type: float64}
+    - {name: vlr_comissao_bruta, type: float64}
+    - {name: pct_irf, type: float64}
+    - {name: vlr_irf, type: float64}
+    - {name: pct_iss, type: float64}
+    - {name: vlr_iss, type: float64}
+    - {name: vlr_comissao_liquida, type: float64}
+    - {name: num_contrato, type: string}
+    - {name: id_fiscal, type: string, only_digits: true}
+    - {name: cnpj_pagamento, type: string, only_digits: true}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  redshift_delay:
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]

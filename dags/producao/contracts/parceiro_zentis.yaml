@@ -1,0 +1,91 @@
+# General
+pipeline: parceiro_zentis
+display_name: "Parceiro Zentis — Produção (comissões)"
+owner: dw
+description: "Produção de comissões do parceiro Zentis, enviada pela área de Comissões pelo SmartCheck e disponibilizada ao BI e ao Financeiro."
+business_justification: "O dado é fornecido ao BI, com atualização diária, e também ao Financeiro, pelos modelos fin_prod_* do dm_financeiro."
+tags:
+- parceiro_zentis
+schedule: 0 22 * * *
+retries: 1
+# Source and Extraction
+source:
+  description: "Arquivo de produção de parceiros (parceiro_zentis), montado pela área de Comissões."
+  owner: "Comissões"
+  contact: "pedro.dantas@investsmart.com.br"
+extraction:
+  description: "Arquivo enviado pela área de Comissões pelo SmartCheck (página producao_parceiros), com disponibilização até as 03:00."
+  capture_method: manual
+  contact: "pedro.dantas@investsmart.com.br"
+# AWS
+s3:
+  path: best/producao/parceiro/zentis
+  file: parceiro_zentis
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: producao
+  table: parceiro_zentis
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: xlsx, header: 6}
+    destination: {type: csv, sep: ';', encoding: UTF-8}
+    columns:
+    - {name: dt_competencia, source: "Competência"}
+    - {name: dt_producao, source: "Data Operação"}
+    - {name: num_contrato, source: "Nº Contrato"}
+    - {name: id_fiscal, source: "CPF ou CPNJ do Cliente", required: false}
+    - {name: nome_cliente, source: "Contratante", pattern: '\p{L}'}
+    - {name: email_assessor, source: "Assessor (e-mail)", pattern: '(?i)^[^@\s]+@investsmart\.com\.br$'}
+    - {name: tipo_macro, source: "Tipo (macro)"}
+    - {name: produto_micro, source: "Produto (micro)"}
+    - {name: vlr_aportado, source: "VALOR APORTADO", type: decimal}
+    - {name: pct_taxa_fee, source: "TX FEE (%)", type: decimal}
+    - {name: vlr_fee_bruto, source: "FEE BRUTO (R$)", type: decimal}
+    - {name: pct_taxa_ir_fee, source: "TX IR FEE  (%)", type: decimal}
+    - {name: vlr_fee_liquido, source: "FEE LIQ (R$)", type: decimal}
+    - {name: vlr_imposto_best, source: "R$ - Impostos", type: decimal, required: false}
+    - {name: vlr_comissao_liquida_best, source: "R$ - Receita Líquida", type: decimal, required: false}
+    - {name: pct_comissao_assessor, source: "% - Comissão Assessor ou Filial", type: decimal, required: false}
+    - {name: vlr_comissao_assessor, source: "R$ - Valor Comissão Assessor ou Filial", type: decimal, required: false}
+    - {name: vlr_lucro_bruto_best, source: "R$ -  Lucro Bruto InvestSmart", type: decimal, required: false}
+silver_to_gold:
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: dt_competencia, type: date64}
+    - {name: dt_producao, type: date64}
+    - {name: num_contrato, type: string}
+    - {name: id_fiscal, type: string, only_digits: true}
+    - {name: nome_cliente, type: string}
+    - {name: email_assessor, type: string}
+    - {name: tipo_macro, type: string}
+    - {name: produto_micro, type: string}
+    - {name: vlr_aportado, type: float64}
+    - {name: pct_taxa_fee, type: float64}
+    - {name: vlr_fee_bruto, type: float64}
+    - {name: pct_taxa_ir_fee, type: float64}
+    - {name: vlr_fee_liquido, type: float64}
+    - {name: vlr_imposto_best, type: float64}
+    - {name: vlr_comissao_liquida_best, type: float64}
+    - {name: pct_comissao_assessor, type: float64}
+    - {name: vlr_comissao_assessor, type: float64}
+    - {name: vlr_lucro_bruto_best, type: float64}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  redshift_delay:
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]

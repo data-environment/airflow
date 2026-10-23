@@ -1,0 +1,97 @@
+# General
+pipeline: parceiro_jqt_advocacia
+display_name: "Parceiro JQT Advocacia — Produção (comissões)"
+owner: dw
+description: "Arquivo de produção do parceiro JQT Advocacia, enviado pela área de Comissões via SmartCheck e disponibilizado ao BI e ao Financeiro."
+business_justification: "O dado é fornecido ao BI, com atualização diária, e também ao Financeiro, pelos modelos fin_prod_* do dm_financeiro."
+tags:
+- parceiro_jqt_advocacia
+schedule: 0 22 * * *
+retries: 1
+# Source and Extraction
+source:
+  description: "Área de Comissões: arquivo de produção parceiro_jqt_advocacia, montado pela área e enviado pelo SmartCheck."
+  owner: "Comissões (Financeiro)"
+  contact: "pedro.dantas@investsmart.com.br"
+extraction:
+  description: "Enviado pela área de Comissões pelo SmartCheck, com disponibilização até as 03:00, um arquivo por data de referência."
+  capture_method: manual
+  contact: "pedro.dantas@investsmart.com.br"
+# AWS
+s3:
+  path: best/producao/parceiro/jqt_advocacia
+  file: parceiro_jqt_advocacia
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: producao
+  table: parceiro_jqt_advocacia
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ';', encoding: UTF-8}
+    filter_rules:
+    - {column: FILIAL, op: contains, value: TOTAL}
+    columns:
+    - {name: nota_fiscal, source: "NF", required: false}
+    - {name: dt_producao, source: "DATA DA RECEITA"}
+    - {name: escritorio_juridico, source: "Escritório Responsável (apenas para controle)", required: false}
+    - {name: nome_cliente, source: "NOME COMPLETO "}
+    - {name: id_fiscal, source: "CPF/CNPJ", required: false}
+    - {name: tipo_cliente, source: "TIPO CLIENTE", required: false}
+    - {name: parcelas, source: "PARCELAS", required: false}
+    - {name: nome_assessor, source: "INDICADOR"}
+    - {name: sigla, source: "SIGLA", required: false}
+    - {name: equipe_filial, source: "FILIAL/EQUIPE", required: false}
+    - {name: segmento, source: "SEGMENTO", required: false}
+    - {name: vlr_comissao_bruta_best, source: "VALOR BRUTO HONORÁRIOS", type: decimal}
+    - {name: vlr_imposto_best, source: "IMPOSTO ", type: decimal}
+    - {name: vlr_comissao_liquida_best, source: "VALOR LÍQUIDO ", type: decimal}
+    - {name: pct_comissao_assessor, source: " AAI", type: decimal, required: false}
+    - {name: vlr_comissao_assessor, source: "AAI VALOR", type: decimal, required: false}
+    - {name: pct_comissao_filial, source: "FILIAL", type: decimal, required: false}
+    - {name: vlr_comissao_filial, source: "FILIAL VALOR ", type: decimal, required: false}
+    - {name: observacao, source: "OBSERVAÇÃO", required: false}
+    - {name: cnpj_pagamento, source: "CNPJ", required: false}
+silver_to_gold:
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: nota_fiscal, type: string}
+    - {name: dt_producao, type: date64}
+    - {name: escritorio_juridico, type: string}
+    - {name: nome_cliente, type: string}
+    - {name: id_fiscal, type: string, only_digits: true}
+    - {name: tipo_cliente, type: string}
+    - {name: parcelas, type: string}
+    - {name: nome_assessor, type: string}
+    - {name: sigla, type: string}
+    - {name: equipe_filial, type: string}
+    - {name: segmento, type: string}
+    - {name: vlr_comissao_bruta_best, type: float64}
+    - {name: vlr_imposto_best, type: float64}
+    - {name: vlr_comissao_liquida_best, type: float64}
+    - {name: pct_comissao_assessor, type: float64}
+    - {name: vlr_comissao_assessor, type: float64}
+    - {name: pct_comissao_filial, type: float64}
+    - {name: vlr_comissao_filial, type: float64}
+    - {name: observacao, type: string}
+    - {name: cnpj_pagamento, type: string, only_digits: true}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  redshift_delay:
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]

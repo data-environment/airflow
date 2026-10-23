@@ -1,0 +1,83 @@
+# General
+pipeline: xp_us
+display_name: "XP US — Produção (comissões)"
+owner: dw
+description: "A área de Comissões produz o arquivo de produção de XP (`xp_us`) e o envia pelo SmartCheck."
+business_justification: "O dado é fornecido ao BI, com atualização diária, e também ao Financeiro, pelos modelos `fin_prod_*` do `dm_financeiro`."
+tags:
+- xp_us
+schedule: 0 22 * * *
+retries: 1
+# Source and Extraction
+source:
+  description: "Arquivo de produção montado pela área de Comissões e enviado pelo SmartCheck."
+  owner: "Comissões (área dentro do Financeiro)"
+  contact: "pedro.dantas@investsmart.com.br"
+extraction:
+  description: "Arquivo enviado pela área de Comissões pelo SmartCheck, com disponibilização até as 03:00. Um arquivo por mês e por CNPJ."
+  capture_method: manual
+  contact: "pedro.dantas@investsmart.com.br"
+# AWS
+s3:
+  path: best/producao/xp/us
+  file: xp_us
+  cnpj: true
+  partitioned: false
+redshift:
+  database: dw
+  schema: producao
+  table: xp_us
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ';', encoding: UTF-8}
+    columns:
+    - {name: classificacao, source: "Classificação", pattern: '^Receitas$'}
+    - {name: categoria, source: "Produto/Categoria", pattern: '^(Brokerage|Advisory)$'}
+    - {name: nv1_tipo_produto, source: "Nível 1"}
+    - {name: nv2_cod_xp_us_cliente, source: "Nível 2", pattern: '^(QXR[0-9]{6}|U[0-9]{7}|XP[0-9]{7})$'}
+    - {name: nv3_nome_banqueiro_us, source: "Nível 3", required: false}
+    - {name: nv4_nome_assessor, source: "Nível 4", required: false}
+    - {name: cod_xp_cliente, source: "Código do Cliente", required: false}
+    - {name: cod_xp_assessor_master, source: "Código Assessor", required: false}
+    - {name: dt_producao, source: "Data"}
+    - {name: vlr_receita_bruta, source: "Receita Bruta", type: decimal}
+    - {name: vlr_receita_liquida, source: "Receita Líquida", type: decimal}
+    - {name: pct_comissao_escritorio, source: "Comissão (%) Escritório", type: decimal}
+    - {name: vlr_comissao_escritorio, source: "Comissão (R$) Escritório", type: decimal}
+    - {name: cnpj_pagamento, source: "CNPJ", required: false}
+silver_to_gold:
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: classificacao, type: string}
+    - {name: categoria, type: string}
+    - {name: nv1_tipo_produto, type: string}
+    - {name: nv2_cod_xp_us_cliente, type: string}
+    - {name: nv3_nome_banqueiro_us, type: string}
+    - {name: nv4_nome_assessor, type: string}
+    - {name: cod_xp_cliente, type: string, only_digits: true}
+    - {name: cod_xp_assessor_master, type: string, only_digits: true}
+    - {name: dt_producao, type: date64}
+    - {name: vlr_receita_bruta, type: float64}
+    - {name: vlr_receita_liquida, type: float64}
+    - {name: pct_comissao_escritorio, type: float64}
+    - {name: vlr_comissao_escritorio, type: float64}
+    - {name: cnpj_pagamento, type: string, only_digits: true}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  job_failure:
+    to: [slack]
+  redshift_delay:
+    to: [gestaodedados@investsmart.com.br]
+    cc: []

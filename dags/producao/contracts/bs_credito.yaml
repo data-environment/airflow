@@ -1,0 +1,103 @@
+# General
+pipeline: bs_credito
+display_name: "BeSmart Crédito — Produção (comissões)"
+owner: dw
+description: "A área de Comissões produz o arquivo de produção de BeSmart (`bs_credito`) e o envia pelo SmartCheck."
+business_justification: "O dado é fornecido ao BI, com atualização diária, e também ao Financeiro, pelos modelos `fin_prod_*` do `dm_financeiro`."
+tags:
+- bs_credito
+schedule: 0 22 * * *
+retries: 1
+# Source and Extraction
+source:
+  description: "Arquivo de produção montado pela área de Comissões e enviado pelo SmartCheck."
+  owner: "Comissões (área dentro do Financeiro)"
+  contact: "pedro.dantas@investsmart.com.br"
+extraction:
+  description: "Arquivo enviado pela área de Comissões pelo SmartCheck, com disponibilização até as 03:00. Um arquivo por mês."
+  capture_method: manual
+  contact: "pedro.dantas@investsmart.com.br"
+# AWS
+s3:
+  path: best/producao/besmart/credito
+  file: bs_credito
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: producao
+  table: bs_credito
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ';', encoding: UTF-8}
+    columns:
+    - {name: dt_producao, source: "Data", required: false}
+    - {name: tipo_pessoa, source: "PF/PJ", pattern: '^(PF|PJ)$'}
+    - {name: id_fiscal, source: "CPF/CNPJ", required: false}
+    - {name: nome_cliente, source: "Cliente", required: false}
+    - {name: email_cliente, source: "E-MAIL ", required: false}
+    - {name: ddd_cliente, source: "DDD", required: false}
+    - {name: telefone_cliente, source: "TELEFONE", required: false}
+    - {name: dt_nascimento, source: "DATA DE NASCIMENTO", required: false}
+    - {name: nome_assessor, source: "ASSESSOR", required: false}
+    - {name: sigla, source: "SIGLA", required: false}
+    - {name: equipe_filial, source: "FILIAL/EQUIPE", required: false}
+    - {name: segmento, source: "SEGMENTO", required: false}
+    - {name: tipo_credito, source: "Operação", required: false}
+    - {name: parceiro, source: "PARCEIRO", required: false}
+    - {name: qtd_parcela, source: "PARCELA", required: false}
+    - {name: pct_operacao, source: "Percentual", type: decimal, required: false}
+    - {name: vlr_bruto_operacao, source: "Valor Bruto da OP", type: decimal, required: false}
+    - {name: vlr_resultado_operacao, source: "RESULTADO OPERAÇÃO", type: decimal, required: false}
+    - {name: vlr_comissao_bruta, source: "COMISSÃO BRUTA", type: decimal}
+    - {name: vlr_comissao_liquida, source: "COMISSÃO LIQUIDA", type: decimal, required: false}
+    - {name: vlr_comissao_assessor, source: "COMISSÃO ASSESSOR", type: decimal, required: false}
+    - {name: vlr_comissao_filial, source: "COMISSÃO FILIAL", type: decimal, required: false}
+    - {name: vlr_comissao_besmart, source: "LIQUIDO BK", type: decimal, required: false}
+    - {name: cnpj_pagamento, source: "CNPJ", required: false}
+silver_to_gold:
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: dt_producao, type: date64}
+    - {name: tipo_pessoa, type: string}
+    - {name: id_fiscal, type: string, only_digits: true}
+    - {name: nome_cliente, type: string}
+    - {name: email_cliente, type: string}
+    - {name: ddd_cliente, type: string, only_digits: true}
+    - {name: telefone_cliente, type: string, only_digits: true}
+    - {name: dt_nascimento, type: date64}
+    - {name: nome_assessor, type: string}
+    - {name: sigla, type: string}
+    - {name: equipe_filial, type: string}
+    - {name: segmento, type: string}
+    - {name: tipo_credito, type: string}
+    - {name: parceiro, type: string}
+    - {name: qtd_parcela, type: string}
+    - {name: pct_operacao, type: float64}
+    - {name: vlr_bruto_operacao, type: float64}
+    - {name: vlr_resultado_operacao, type: float64}
+    - {name: vlr_comissao_bruta, type: float64}
+    - {name: vlr_comissao_liquida, type: float64}
+    - {name: vlr_comissao_assessor, type: float64}
+    - {name: vlr_comissao_filial, type: float64}
+    - {name: vlr_comissao_besmart, type: float64}
+    - {name: cnpj_pagamento, type: string, only_digits: true}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  job_failure:
+    to: [slack]
+  redshift_delay:
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
