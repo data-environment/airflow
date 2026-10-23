@@ -1,0 +1,67 @@
+# General
+pipeline: mercado_bitcoin_advisor
+display_name: "Mercado Bitcoin — Advisors"
+owner: dw
+description: "Cadastro de assessores do parceiro Mercado Bitcoin (identificado por advisor_id), com carga versionada (upsert + soft-delete) refletindo alterações e inativações."
+business_justification: "Não alimenta diretamente os datamarts de negócio; enriquece best_custodia e best_incremento com os dados do assessor responsável por cada usuário/operação."
+tags:
+- mercado_bitcoin_advisor
+schedule: 20 23 * * 1-5
+retries: 2
+# Source and Extraction
+source:
+  description: "API do parceiro Mercado Bitcoin, endpoint identity/v2/user."
+  owner: "Mercado Bitcoin"
+  contact: "rodrigo.florencio@mb.com.br, igor.kawata@mb.com.br"
+extraction:
+  description: "Extração automática via API REST, em dias úteis: recarga completa do recurso a cada execução, sem paginação nem filtro."
+  capture_method: api
+  resource: mercado_bitcoin_advisor/api.py
+  contact: "gestaodedados@investsmart.com.br"
+# AWS
+s3:
+  path: parceiros/mercado_bitcoin/advisor
+  file: mercado_bitcoin_advisor
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: parceiro
+  table: mercado_bitcoin_advisors
+  load_mode: upsert
+  partition_key: dt_ref
+  unique_key: [advisor_id]
+# ETL
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: csv, sep: ';', encoding: UTF-8}
+    destination: {type: csv, sep: ';', encoding: UTF-8}
+    columns:
+    - {name: advisor_id, source: claims.user_admin_id}
+    - {name: email, source: email, max_length: 256}
+    - {name: first_name, source: first_name, max_length: 256}
+    - {name: last_name, source: last_name, max_length: 256}
+    - {name: email_confirmed, source: email_confirmed}
+silver_to_gold:
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: advisor_id, type: int64}
+    - {name: email, type: string}
+    - {name: first_name, type: string}
+    - {name: last_name, type: string}
+    - {name: email_confirmed, type: bool}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  redshift_delay:
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]

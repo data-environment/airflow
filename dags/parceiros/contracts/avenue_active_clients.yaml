@@ -1,0 +1,96 @@
+# General
+pipeline: avenue_active_clients
+display_name: "Base de Clientes Ativos — Avenue"
+owner: dw
+description: "Snapshot diário completo da base de clientes Avenue, com flag de ativo/inativo e informações cadastrais e de perfil, extraído da view active_clients da Looker API e persistido no datamart de alocação."
+business_justification: "Permite à equipe de Performance monitorar a evolução e o status da carteira de clientes por assessor e escritório. Também está prevista para uso futuro na unificação da visualização de clientes dos assessores entre parceiros. Tabela sem consumo ativo no momento."
+tags:
+- avenue_active_clients
+schedule: 10 20 * * 1-5
+retries: 2
+# Source and Extraction
+source:
+  description: "Avenue Analytics (Looker), view active_clients do model avenue_b2b_office_api."
+  owner: "Avenue"
+  contact: "gestaodedados@investsmart.com.br"
+extraction:
+  description: "Pipeline incremental: extrai registros do snapshot diário com active_date entre MAX(active_date)+1 (DW) e hoje-1, via POST na Looker API. O dia corrente é excluído por poder estar incompleto na origem."
+  capture_method: api
+  resource: avenue_active_clients/api.py
+  contact: "gestaodedados@investsmart.com.br"
+# AWS
+s3:
+  path: parceiros/avenue/active_clients
+  file: active_clients
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: parceiro
+  table: avenue_active_clients
+  load_mode: append
+  partition_key: dt_ref
+# ETL
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: csv, sep: ';', encoding: UTF-8}
+    destination: {type: csv, sep: ';', encoding: UTF-8}
+    columns:
+    - {name: active_date, source: active_date}
+    - {name: client_cpf, source: client_cpf, max_length: 11, pattern: '^\d+$'}
+    - {name: client_email, source: client_email}
+    - {name: client_name, source: client_name}
+    - {name: foreign_finder_email, source: foreign_finder_email}
+    - {name: foreign_finder_name, source: foreign_finder_name}
+    - {name: foreign_finder_code, source: foreign_finder_code}
+    - {name: office_cnpj, source: office_cnpj, max_length: 14, pattern: '^\d+$'}
+    - {name: office_name, source: office_name}
+    - {name: auc_brl, source: auc_brl, type: decimal, required: false}
+    - {name: auc_usd, source: auc_usd, type: decimal, required: false}
+    - {name: active, source: active}
+    - {name: customer_type, source: customer_type, required: false}
+    - {name: suitability, source: suitability, required: false}
+    - {name: birthday_date, source: birthday_date, required: false}
+    - {name: account_created_date, source: account_created_date, required: false}
+    - {name: marital_status, source: marital_status, required: false}
+    - {name: apex_account_number, source: apex_account_number, required: false}
+    - {name: job_title, source: job_title, required: false}
+    - {name: connect_broker_date, source: connect_broker_date, required: false}
+silver_to_gold:
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: active_date, type: date64}
+    - {name: client_cpf, type: string}
+    - {name: client_email, type: string}
+    - {name: client_name, type: string}
+    - {name: foreign_finder_email, type: string}
+    - {name: foreign_finder_name, type: string}
+    - {name: foreign_finder_code, type: string}
+    - {name: office_cnpj, type: string}
+    - {name: office_name, type: string}
+    - {name: auc_brl, type: float64}
+    - {name: auc_usd, type: float64}
+    - {name: active, type: int32}
+    - {name: customer_type, type: string}
+    - {name: suitability, type: string}
+    - {name: birthday_date, type: date64}
+    - {name: account_created_date, type: date64}
+    - {name: marital_status, type: string}
+    - {name: apex_account_number, type: string}
+    - {name: job_title, type: string}
+    - {name: connect_broker_date, type: date64}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  job_failure:
+    to: [slack]
+  redshift_delay:
+    to: [gestaodedados@investsmart.com.br]
+    cc: []

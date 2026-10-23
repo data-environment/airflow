@@ -1,0 +1,76 @@
+# General
+pipeline: mercado_bitcoin_transfer
+display_name: "Mercado Bitcoin — Transfers"
+owner: dw
+description: "Histórico de movimentações (transferências/operações) de ativos por usuário do parceiro Mercado Bitcoin, extraído via API de forma incremental por data de operação."
+business_justification: "Alimenta diretamente o datamart de incremento (best_incremento), que consolida dados de incremento de múltiplos parceiros — uma das fontes usadas pelo BI para reportar captação/incremento da empresa."
+tags:
+- mercado_bitcoin_transfer
+schedule: 30 23 * * 1-5
+retries: 2
+# Source and Extraction
+source:
+  description: "API do parceiro Mercado Bitcoin, endpoint apidatahub/v1/users/transfers."
+  owner: "Mercado Bitcoin"
+  contact: "rodrigo.florencio@mb.com.br, igor.kawata@mb.com.br"
+extraction:
+  description: "Extração incremental via API REST: pagina do mais recente ao mais antigo até o watermark MAX(operation_date) já carregado no Redshift; sem histórico prévio, assume o último dia do mês anterior. Carrega por dia (operation_date) e nunca revisita um dia já carregado."
+  capture_method: api
+  resource: mercado_bitcoin_transfer/api.py
+  contact: "gestaodedados@investsmart.com.br"
+# AWS
+s3:
+  path: parceiros/mercado_bitcoin/transfer
+  file: mercado_bitcoin_transfer
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: parceiro
+  table: mercado_bitcoin_transfers
+  load_mode: append
+  partition_key: dt_ref
+# ETL
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: csv, sep: ';', encoding: UTF-8}
+    destination: {type: csv, sep: ';', encoding: UTF-8}
+    columns:
+    - {name: asset, source: asset, max_length: 32}
+    - {name: asset_category, source: asset_category, max_length: 32}
+    - {name: operation_date, source: operation_date}
+    - {name: operation_name, source: operation_name, max_length: 64}
+    - {name: volume, source: volume, type: decimal}
+    - {name: transaction_hash, source: transaction_hash, max_length: 128, required: false}
+    - {name: transaction_status, source: transaction_status, max_length: 64, required: false}
+    - {name: wallet_address, source: wallet_address, max_length: 128, required: false}
+    - {name: user_id, source: wuzu_id}
+    - {name: advisor_id, source: wuzu_admin_id, required: false}
+silver_to_gold:
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: asset, type: string}
+    - {name: asset_category, type: string}
+    - {name: operation_date, type: 'timestamp[ns]'}
+    - {name: operation_name, type: string}
+    - {name: volume, type: float64}
+    - {name: transaction_hash, type: string}
+    - {name: transaction_status, type: string}
+    - {name: wallet_address, type: string}
+    - {name: user_id, type: int64}
+    - {name: advisor_id, type: int64}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  redshift_delay:
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]

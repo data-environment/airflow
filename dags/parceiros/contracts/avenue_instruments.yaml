@@ -1,0 +1,76 @@
+# General
+pipeline: avenue_instruments
+display_name: "Catálogo de Ativos (Instruments) — Avenue"
+owner: dw
+description: "Catálogo completo de ativos disponíveis para negociação na Avenue, extraído da view instruments da Looker API."
+business_justification: "Tabela de dimensão para enriquecer análises de ordens, custódia e vencimentos com setor, indústria e tipo do ativo. Tabela sem consumo ativo no momento."
+tags:
+- avenue_instruments
+schedule: 30 20 * * 1-5
+retries: 2
+# Source and Extraction
+source:
+  description: "Avenue Analytics (Looker), view instruments do model avenue_b2b_office_api."
+  owner: "Avenue"
+  contact: "gestaodedados@investsmart.com.br"
+extraction:
+  description: "Carga completa (full load): a cada execução extrai todos os instrumentos via POST na Looker API, sem filtro de data."
+  capture_method: api
+  resource: avenue_instruments/api.py
+  contact: "gestaodedados@investsmart.com.br"
+# AWS
+s3:
+  path: parceiros/avenue/instruments
+  file: instruments
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: parceiro
+  table: avenue_instruments
+  load_mode: merge
+  unique_key:
+  - symbol
+  partition_key: dt_ref
+# ETL
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: csv, sep: ';', encoding: UTF-8}
+    destination: {type: csv, sep: ';', encoding: UTF-8}
+    columns:
+    - {name: symbol, source: symbol}
+    - {name: name, source: name}
+    - {name: symbol_alias, source: symbol_alias, required: false}
+    - {name: exchange, source: exchange, required: false}
+    - {name: sector, source: sector, required: false}
+    - {name: industry, source: industry, required: false}
+    - {name: group_name, source: group, required: false}
+    - {name: category, source: category, required: false}
+    - {name: cusip, source: cusip, required: false}
+silver_to_gold:
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: symbol, type: string}
+    - {name: name, type: string}
+    - {name: symbol_alias, type: string}
+    - {name: exchange, type: string}
+    - {name: sector, type: string}
+    - {name: industry, type: string}
+    - {name: group_name, type: string}
+    - {name: category, type: string}
+    - {name: cusip, type: string}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  job_failure:
+    to: [slack]
+  redshift_delay:
+    to: [gestaodedados@investsmart.com.br]
+    cc: []

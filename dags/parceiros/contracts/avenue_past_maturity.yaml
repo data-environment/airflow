@@ -1,0 +1,92 @@
+# General
+pipeline: avenue_past_maturity
+display_name: "Vencimentos Recentes de Renda Fixa (Past Maturity) — Avenue"
+owner: dw
+description: "Vencimentos de produtos de Renda Fixa ocorridos nos últimos 30 dias, extraídos da view past_maturity da Looker API."
+business_justification: "Permite à equipe de Performance acompanhar os recursos liberados por vencimento e as oportunidades de realocação. Tabela sem consumo ativo hoje."
+tags:
+- avenue_past_maturity
+schedule: 00 21 * * 1-5
+retries: 2
+# Source and Extraction
+source:
+  description: "Avenue Analytics (Looker), view past_maturity do model avenue_b2b_office_api."
+  owner: "Avenue"
+  contact: "gestaodedados@investsmart.com.br"
+extraction:
+  description: "Pipeline incremental via API Looker. A view retorna vencimentos dos últimos 30 dias; o pipeline consome o delta com past_maturity_date entre a última data carregada no DW + 1 e D-1 (o dia corrente é excluído por poder estar incompleto na origem)."
+  capture_method: api
+  resource: avenue_past_maturity/api.py
+  contact: "gestaodedados@investsmart.com.br"
+# AWS
+s3:
+  path: parceiros/avenue/past_maturity
+  file: past_maturity
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: parceiro
+  table: avenue_past_maturity
+  load_mode: append
+  partition_key: dt_ref
+# ETL
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: csv, sep: ';', encoding: UTF-8}
+    destination: {type: csv, sep: ';', encoding: UTF-8}
+    columns:
+    - {name: past_maturity_date, source: past_maturity_date, required: false}
+    - {name: client_cpf, source: client_cpf, required: false, pattern: '^\d+$'}
+    - {name: client_email, source: client_email, required: false}
+    - {name: client_name, source: client_name, required: false}
+    - {name: foreign_finder_email, source: foreign_finder_email, required: false}
+    - {name: foreign_finder_name, source: foreign_finder_name, required: false}
+    - {name: foreign_finder_code, source: foreign_finder_code, required: false}
+    - {name: office_cnpj, source: office_cnpj, required: false, pattern: '^\d+$'}
+    - {name: office_name, source: office_name, required: false}
+    - {name: product_type, source: product_type, required: false}
+    - {name: product_cusip, source: product_cusip, required: false}
+    - {name: product_name, source: product_name, required: false}
+    - {name: product_symbol, source: product_symbol, required: false}
+    - {name: maturity_date, source: maturity_date, required: false}
+    - {name: next_coupon_date, source: next_coupon_date, required: false}
+    - {name: auc_brl, source: auc_brl, required: false, type: decimal}
+    - {name: auc_usd, source: auc_usd, required: false, type: decimal}
+    - {name: quantity, source: quantity, required: false, type: decimal}
+silver_to_gold:
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: past_maturity_date, type: date64}
+    - {name: client_cpf, type: string}
+    - {name: client_email, type: string}
+    - {name: client_name, type: string}
+    - {name: foreign_finder_email, type: string}
+    - {name: foreign_finder_name, type: string}
+    - {name: foreign_finder_code, type: string}
+    - {name: office_cnpj, type: string}
+    - {name: office_name, type: string}
+    - {name: product_type, type: string}
+    - {name: product_cusip, type: string}
+    - {name: product_name, type: string}
+    - {name: product_symbol, type: string}
+    - {name: maturity_date, type: date64}
+    - {name: next_coupon_date, type: date64}
+    - {name: auc_brl, type: float64}
+    - {name: auc_usd, type: float64}
+    - {name: quantity, type: float64}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  redshift_delay:
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]

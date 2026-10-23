@@ -1,0 +1,84 @@
+# General
+pipeline: avenue_account_insights
+display_name: "Insights de Conta — Avenue"
+owner: dw
+description: "Lista de insights por conta dos clientes Avenue (idêntica ao painel da Extranet do parceiro), extraída da view account_insights da Looker API e persistida no datamart de alocação."
+business_justification: "Permite à equipe de Performance acompanhar alertas, oportunidades e prioridades por cliente vinculado aos assessores. Tabela sem consumo ativo no momento."
+tags:
+- avenue_account_insights
+schedule: 05 20 * * 1-5
+retries: 2
+# Source and Extraction
+source:
+  description: "Avenue Analytics (Looker), view account_insights do model avenue_b2b_office_api."
+  owner: "Avenue"
+  contact: "gestaodedados@investsmart.com.br"
+extraction:
+  description: "Pipeline incremental: extrai insights com insight_date entre MAX(insight_date)+1 (DW) e hoje-1, via POST na Looker API. O dia corrente é excluído por poder estar incompleto na origem."
+  capture_method: api
+  resource: avenue_account_insights/api.py
+  contact: "gestaodedados@investsmart.com.br"
+# AWS
+s3:
+  path: parceiros/avenue/account_insights
+  file: account_insights
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: parceiro
+  table: avenue_account_insights
+  load_mode: append
+  partition_key: dt_ref
+# ETL
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: csv, sep: ';', encoding: UTF-8}
+    destination: {type: csv, sep: ';', encoding: UTF-8}
+    columns:
+    - {name: insight_date, source: insight_date}
+    - {name: client_cpf, source: client_cpf, max_length: 11, pattern: '^\d+$'}
+    - {name: client_email, source: client_email}
+    - {name: client_name, source: client_name}
+    - {name: foreign_finder_email, source: foreign_finder_email}
+    - {name: foreign_finder_name, source: foreign_finder_name}
+    - {name: foreign_finder_code, source: foreign_finder_code}
+    - {name: office_cnpj, source: office_cnpj, max_length: 14, pattern: '^\d+$'}
+    - {name: office_name, source: office_name}
+    - {name: categoria, source: categoria}
+    - {name: insight, source: insight}
+    - {name: prioridade, source: prioridade, type: decimal}
+    - {name: moeda, source: moeda}
+    - {name: valor, source: valor, type: decimal}
+silver_to_gold:
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: insight_date, type: date64}
+    - {name: client_cpf, type: string}
+    - {name: client_email, type: string}
+    - {name: client_name, type: string}
+    - {name: foreign_finder_email, type: string}
+    - {name: foreign_finder_name, type: string}
+    - {name: foreign_finder_code, type: string}
+    - {name: office_cnpj, type: string}
+    - {name: office_name, type: string}
+    - {name: categoria, type: string}
+    - {name: insight, type: string}
+    - {name: prioridade, type: float64}
+    - {name: moeda, type: string}
+    - {name: valor, type: float64}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  job_failure:
+    to: [slack]
+  redshift_delay:
+    to: [gestaodedados@investsmart.com.br]
+    cc: []

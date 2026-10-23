@@ -1,0 +1,69 @@
+# General
+pipeline: dolarize_ita_cliente_documentos
+display_name: "Dolarize ITA — Cliente Documentos"
+owner: dw
+description: "Documentos de identificação dos clientes das apólices da Dolarize na Investors Trust, identificados pelo código do plano, com tipo, número, país emissor e datas de expedição, expiração e resgate."
+business_justification: "Consolidar a base de clientes que efetivaram apólices da InvestorsTrust, garantindo a identificação correta de cada cliente e apoiando o mapeamento de oportunidades de venda de outros produtos de investimento."
+tags:
+- dolarize_ita_cliente_documentos
+schedule: 05 22 * * 1-5
+retries: 2
+# Source and Extraction
+source:
+  description: "Site da Dolarize.me, com extração manual."
+  owner: "Dolarize"
+  contact: "performance.best@investsmart.com.br"
+extraction:
+  description: "Documentos de cliente extraídos manualmente do site da Dolarize.me (Excel), com carga incremental e dt_ref extraído do nome do arquivo. Reprocessamento substitui a partição inteira."
+  capture_method: manual
+  contact: "performance.best@investsmart.com.br"
+# AWS
+s3:
+  path: best/parceiro/dolarize/cliente_documentos
+  file: dolarize_ita_cliente_documentos
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: parceiro
+  table: dolarize_ita_cliente_documentos
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ';', encoding: UTF-8}
+    columns:
+    - {name: cod_plano, source: numero_plano}
+    - {name: tipo, source: tipo}
+    - {name: numero_documento, source: numero}
+    - {name: dt_expedicao, source: data_expedicao, required: false}
+    - {name: dt_expiracao, source: data_expiracao, required: false}
+    - {name: pais_emissor, source: pais_emissor}
+    - {name: dt_resgate, source: data_resgate}
+silver_to_gold:
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: cod_plano, type: string}
+    - {name: tipo, type: string}
+    - {name: numero_documento, type: string}
+    - {name: dt_expedicao, type: string}
+    - {name: dt_expiracao, type: string}
+    - {name: pais_emissor, type: string}
+    - {name: dt_resgate, type: string}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  redshift_delay:
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]

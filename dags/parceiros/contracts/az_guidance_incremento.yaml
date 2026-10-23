@@ -1,0 +1,86 @@
+# General
+pipeline: az_guidance_incremento
+display_name: "AZ Guidance — Incremento"
+owner: dw
+description: "Base de incremento (captação) dos clientes da AZ Guidance, identificados por CPF/CNPJ: movimentações financeiras mensais com data da operação, cliente e valor (positivo ou negativo)."
+business_justification: "Entender o fluxo de recursos (entradas e saídas) do parceiro AZ Guidance, visão consumida pelos BIs, assessores e filiais. Alimenta a tabela dm_alocacoes.best_incremento, que consolida o incremento de vários parceiros."
+tags:
+- az_guidance_incremento
+schedule: 00 20 * * 1-5
+retries: 2
+# Source and Extraction
+source:
+  description: "Parceiro AZ Guidance envia o arquivo por e-mail para Gestão de Dados; recorrência mensal, um arquivo por mês de referência."
+  owner: "Az Guidance"
+  contact: "raphael.marendaz@azguidance.com.br"
+extraction:
+  description: "Base de incremento recebida por e-mail do parceiro AZ Guidance (Excel), inserção via SmartCheck. Reprocessa um arquivo se ele for novo ou modificado, utilizando a data do arquivo (dt_ref) como identificador."
+  capture_method: manual
+  contact: "gestaodedados@investsmart.com.br"
+# AWS
+s3:
+  path: best/parceiro/az_guidance/incremento
+  file: az_guidance_incremento
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: parceiro
+  table: az_guidance_incremento
+  load_mode: replace_partition
+  partition_key: dt_ref
+# ETL
+bronze_to_silver:
+  versions:
+  - from: 2026-09-14
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ';', encoding: UTF-8}
+    columns:
+    - {name: dt_operacao, source: Data}
+    - {name: nome_cliente, source: Cliente, required: false}
+    - {name: id_fiscal, source: CPF, min_length: 11, max_length: 18}
+    - {name: tipo_movimento, source: Tipo de Movimento}
+    - {name: vlr_incremento, source: Valor, type: decimal}
+    - {name: custodiante, source: Custodiante, required: false}
+  - from: 2026-09-23
+    origin: {type: xlsx}
+    destination: {type: csv, sep: ';', encoding: UTF-8}
+    columns:
+    - {name: dt_operacao, source: Data}
+    - {name: nome_cliente, source: Nome do Cliente, required: false}
+    - {name: id_fiscal, source: CPF do Cliente, required: false, min_length: 11, max_length: 18}
+    - {name: vlr_incremento, source: Captação no Mês, required: false, type: decimal}
+silver_to_gold:
+  versions:
+  - from: 2026-09-14
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: dt_operacao, type: string}
+    - {name: nome_cliente, type: string}
+    - {name: id_fiscal, type: string, only_digits: true}
+    - {name: tipo_movimento, type: string}
+    - {name: vlr_incremento, type: float64}
+    - {name: custodiante, type: string}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+  - from: 2026-09-23
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: dt_operacao, type: string}
+    - {name: nome_cliente, type: string}
+    - {name: id_fiscal, type: string, only_digits: true}
+    - {name: vlr_incremento, type: float64}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  redshift_delay:
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]

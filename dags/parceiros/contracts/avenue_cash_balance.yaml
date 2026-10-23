@@ -1,0 +1,82 @@
+# General
+pipeline: avenue_cash_balance
+display_name: "Saldo em Caixa — Avenue"
+owner: dw
+description: "Posição diária em caixa dos clientes Avenue, extraída da view cash_balance da Looker API e persistida no datamart de alocação."
+business_justification: "Permite à equipe de Performance acompanhar o capital disponível para investimento por cliente e assessor. Tabela sem consumo ativo no momento."
+tags:
+- avenue_cash_balance
+schedule: 20 20 * * 1-5
+retries: 2
+# Source and Extraction
+source:
+  description: "Avenue Analytics (Looker), view cash_balance do model avenue_b2b_office_api."
+  owner: "Avenue"
+  contact: "gestaodedados@investsmart.com.br"
+extraction:
+  description: "Pipeline incremental: extrai posições de caixa com cash_date entre MAX(cash_date)+1 (DW) e hoje-1, via POST na Looker API. O dia corrente é excluído por poder estar incompleto na origem."
+  capture_method: api
+  resource: avenue_cash_balance/api.py
+  contact: "gestaodedados@investsmart.com.br"
+# AWS
+s3:
+  path: parceiros/avenue/cash_balance
+  file: cash_balance
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: parceiro
+  table: avenue_cash_balance
+  load_mode: append
+  partition_key: dt_ref
+# ETL
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: csv, sep: ';', encoding: UTF-8}
+    destination: {type: csv, sep: ';', encoding: UTF-8}
+    columns:
+    - {name: cash_date, source: cash_date}
+    - {name: client_cpf, source: client_cpf, max_length: 11, pattern: '^\d+$'}
+    - {name: client_email, source: client_email}
+    - {name: client_name, source: client_name}
+    - {name: foreign_finder_email, source: foreign_finder_email}
+    - {name: foreign_finder_name, source: foreign_finder_name}
+    - {name: foreign_finder_code, source: foreign_finder_code}
+    - {name: office_cnpj, source: office_cnpj, max_length: 14, pattern: '^\d+$'}
+    - {name: office_name, source: office_name}
+    - {name: product_cusip, source: product_cusip, required: false}
+    - {name: product_name, source: product_name}
+    - {name: balance_brl, source: balance_brl, type: decimal}
+    - {name: balance_usd, source: balance_usd, type: decimal}
+silver_to_gold:
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: cash_date, type: date64}
+    - {name: client_cpf, type: string}
+    - {name: client_email, type: string}
+    - {name: client_name, type: string}
+    - {name: foreign_finder_email, type: string}
+    - {name: foreign_finder_name, type: string}
+    - {name: foreign_finder_code, type: string}
+    - {name: office_cnpj, type: string}
+    - {name: office_name, type: string}
+    - {name: product_cusip, type: string}
+    - {name: product_name, type: string}
+    - {name: balance_brl, type: float64}
+    - {name: balance_usd, type: float64}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  job_failure:
+    to: [slack]
+  redshift_delay:
+    to: [gestaodedados@investsmart.com.br]
+    cc: []

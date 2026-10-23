@@ -1,0 +1,80 @@
+# General
+pipeline: avenue_transferred_clients
+display_name: "Migração de Clientes (Transferred Clients) — Avenue"
+owner: dw
+description: "Histórico de migrações de clientes para e do escritório (IN e OUT), extraído da view transferred_clients da Looker API."
+business_justification: "Permite à equipe de Performance acompanhar o fluxo de entrada e saída de clientes e patrimônio por assessor. Uso previsto na unificação da visão de clientes entre parceiros. Tabela sem consumo ativo hoje."
+tags:
+- avenue_transferred_clients
+schedule: 00 20 * * 1-5
+retries: 2
+# Source and Extraction
+source:
+  description: "Avenue Analytics (Looker), view transferred_clients do model avenue_b2b_office_api."
+  owner: "Avenue"
+  contact: "gestaodedados@investsmart.com.br"
+extraction:
+  description: "Pipeline incremental via API Looker. Extrai registros com transferred_date entre a última data carregada no DW + 1 e D-1 (o dia corrente é excluído por poder estar incompleto na origem)."
+  capture_method: api
+  resource: avenue_transferred_clients/api.py
+  contact: "gestaodedados@investsmart.com.br"
+# AWS
+s3:
+  path: parceiros/avenue/transferred_clients
+  file: transferred_clients
+  cnpj: false
+  partitioned: false
+redshift:
+  database: dw
+  schema: parceiro
+  table: avenue_transferred_clients
+  load_mode: append
+  partition_key: dt_ref
+# ETL
+bronze_to_silver:
+  versions:
+  - from: 2020-01-01
+    origin: {type: csv, sep: ';', encoding: UTF-8}
+    destination: {type: csv, sep: ';', encoding: UTF-8}
+    columns:
+    - {name: transferred_date, source: transferred_date}
+    - {name: client_cpf, source: client_cpf, pattern: '^\d+$', max_length: 11}
+    - {name: client_email, source: client_email}
+    - {name: client_name, source: client_name}
+    - {name: foreign_finder_email, source: foreign_finder_email}
+    - {name: foreign_finder_code, source: foreign_finder_code}
+    - {name: foreign_finder_name, source: foreign_finder_name}
+    - {name: office_cnpj, source: office_cnpj, pattern: '^\d+$', max_length: 14}
+    - {name: office_name, source: office_name}
+    - {name: transfer_direction, source: transfer_direction}
+    - {name: transferred_net_dol, source: transferred_net_dol, type: decimal}
+    - {name: transferred_net_real, source: transferred_net_real, type: decimal}
+silver_to_gold:
+  versions:
+  - from: 2020-01-01
+    enrichment:
+    - {name: dt_ref, from: file_date, description: "Data de referência extraída do AAAAMMDD no nome do arquivo"}
+    - {name: id_calendario_dt_ref, from: dt_ref, format: "%Y%m%d", description: "dt_ref como inteiro AAAAMMDD"}
+    schema:
+    - {name: transferred_date, type: date64}
+    - {name: client_cpf, type: string}
+    - {name: client_email, type: string}
+    - {name: client_name, type: string}
+    - {name: foreign_finder_email, type: string}
+    - {name: foreign_finder_code, type: string}
+    - {name: foreign_finder_name, type: string}
+    - {name: office_cnpj, type: string}
+    - {name: office_name, type: string}
+    - {name: transfer_direction, type: string}
+    - {name: transferred_net_dol, type: float64}
+    - {name: transferred_net_real, type: float64}
+    - {name: dt_ref, type: date64}
+    - {name: id_calendario_dt_ref, type: int32}
+# Quality and Alerts
+quality: []
+alerts:
+  redshift_delay:
+    to: [gestaodedados@investsmart.com.br]
+    cc: []
+  job_failure:
+    to: [slack]
