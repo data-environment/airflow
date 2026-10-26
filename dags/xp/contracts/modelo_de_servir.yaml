@@ -6,7 +6,7 @@ description: "Snapshot periódico, por cliente e assessor, do 'modelo de servir'
 business_justification: "Não confirmado — pendente de levantamento com a área de negócio."
 tags:
 - modelo_de_servir
-schedule: 9 22 * * 1-5
+sensor_interval: 7200
 retries: 1
 # Source and Extraction
 source:

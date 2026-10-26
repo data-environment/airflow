@@ -6,7 +6,7 @@ description: "Ordens de remessa internacional (câmbio) de clientes XP com conta
 business_justification: "A definir com área de negócio."
 tags:
 - xp_internacional_remessas
-schedule: 18 22 * * 1-5
+sensor_interval: 7200
 retries: 1
 # Source and Extraction
 source:

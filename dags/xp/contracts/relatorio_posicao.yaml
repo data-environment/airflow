@@ -6,7 +6,7 @@ description: "Relatório de posição de operações estruturadas por cliente/as
 business_justification: "A definir com área de negócio."
 tags:
 - relatorio_posicao
-schedule: 24 22 * * 1-5
+sensor_interval: 7200
 retries: 1
 # Source and Extraction
 source:

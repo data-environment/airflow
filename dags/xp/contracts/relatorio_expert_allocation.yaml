@@ -6,7 +6,7 @@ description: "Log de atividades/tarefas de alocação por conta — diferente do
 business_justification: "A definir com área de negócio."
 tags:
 - relatorio_expert_allocation
-schedule: 12 22 * * 1-5
+sensor_interval: 7200
 retries: 1
 # Source and Extraction
 source:

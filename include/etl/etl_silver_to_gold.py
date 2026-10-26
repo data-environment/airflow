@@ -18,6 +18,18 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+BOOL_VALUES = {
+    "sim": True,
+    "s": True,
+    "true": True,
+    "1": True,
+    "não": False,
+    "nao": False,
+    "n": False,
+    "false": False,
+    "0": False,
+}
+
 
 class SilverToGold:
     def __init__(self, contract: Contract, layer: "Layer | None" = None):
@@ -148,7 +160,21 @@ class SilverToGold:
             return cls._to_datetime(values)
         if type_name.startswith("date"):
             return cls._to_datetime(values).dt.date
+        if type_name == "bool":
+            return cls._to_bool(values)
         raise ValueError(f"Tipo '{type_name}' da coluna '{column.name}' não suportado.")
+
+    @staticmethod
+    def _to_bool(values: Series) -> Series:
+        """Aceita `Sim`/`Não` (export XP) e variações comuns; vazio vira nulo."""
+        text = values.str.strip().str.lower()
+        result = text.map(BOOL_VALUES)
+        unknown = text.notna() & (text != "") & result.isna()
+        if unknown.any():
+            raise ValueError(
+                f"valores booleanos não reconhecidos: {sorted(text[unknown].unique())}"
+            )
+        return result.astype("boolean")
 
     @staticmethod
     def _to_datetime(values: Series) -> Series:
