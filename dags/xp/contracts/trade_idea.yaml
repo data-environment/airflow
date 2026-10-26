@@ -6,7 +6,7 @@ description: "Posições de clientes XP em indicações de trade idea, com anali
 business_justification: "A definir com área de negócio."
 tags:
 - trade_idea
-schedule: 20 23 * * 1-5
+sensor_interval: 7200
 retries: 1
 # Source and Extraction
 source:

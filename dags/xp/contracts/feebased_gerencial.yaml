@@ -6,7 +6,7 @@ description: "Registro dos contratos de fee-based gerencial firmados pelos clien
 business_justification: "A definir com área de negócio."
 tags:
 - feebased_gerencial
-schedule: 27 22 * * 1-5
+sensor_interval: 7200
 retries: 1
 # Source and Extraction
 source:

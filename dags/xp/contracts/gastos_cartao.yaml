@@ -6,7 +6,7 @@ description: "Cadastro de contas XP por escritório com indicadores de uso do ca
 business_justification: "A definir com área de negócio."
 tags:
 - gastos_cartao
-schedule: 39 22 * * 1-5
+sensor_interval: 7200
 retries: 1
 # Source and Extraction
 source:

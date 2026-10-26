@@ -6,7 +6,7 @@ description: "Indicador consolidado de risco de ruptura/rotatividade de clientes
 business_justification: "A definir com área de negócio."
 tags:
 - indice_de_ruptura
-schedule: 3 22 * * 1-5
+sensor_interval: 7200
 retries: 1
 # Source and Extraction
 source:

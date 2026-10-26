@@ -6,7 +6,7 @@ description: "Relatório por conta/cliente XP com os sub-índices que compõem o
 business_justification: "A definir com área de negócio."
 tags:
 - indice_de_saude
-schedule: 6 22 * * 1-5
+sensor_interval: 7200
 retries: 1
 # Source and Extraction
 source:

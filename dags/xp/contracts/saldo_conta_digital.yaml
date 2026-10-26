@@ -6,7 +6,7 @@ description: "Relatório da XP com o saldo da conta digital dos clientes por con
 business_justification: "A definir com área de negócio."
 tags:
 - saldo_conta_digital
-schedule: 52 22 * * 1-5
+sensor_interval: 7200
 retries: 1
 # Source and Extraction
 source:
